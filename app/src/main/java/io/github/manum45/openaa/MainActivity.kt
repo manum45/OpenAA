@@ -1,14 +1,25 @@
 package io.github.manum45.openaa
 
+import android.content.Intent
+import android.hardware.usb.UsbAccessory
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
+import android.os.Build.VERSION.SDK_INT
 import android.os.Bundle
+import android.os.Parcelable
 import android.util.Log
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Favorite
@@ -16,11 +27,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,9 +40,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.lifecycle.Observer
 import io.github.manum45.openaa.ui.theme.OpenAATheme
+import kotlin.getValue
 
+val TAG = "OpenAA" + MainActivity::class.simpleName
+
+val logCatText = mutableStateOf("=== Logcat ===")
 class MainActivity : ComponentActivity() {
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -43,6 +58,13 @@ class MainActivity : ComponentActivity() {
                 OpenAAApp()
             }
         }
+
+        // https://stackoverflow.com/a/59511458
+        val logCatViewModel by viewModels<LogcatViewModel>()
+
+        logCatViewModel.logCatOutput().observe(this, Observer { logMessage ->
+            logCatText.value += "$logMessage\n"
+        })
     }
 }
 
@@ -82,6 +104,7 @@ fun OpenAAApp() {
                 ActionButton(
                     "LetsGo"
                 )
+                LogCatTextView()
             }
         }
     }
@@ -109,11 +132,18 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 fun ActionButton(text: String)
 {
     Button(
-        onClick = { Log.d("OpenAA", "ActionButton: Clicked")}
+        onClick = { Log.d(TAG, "ActionButton: Clicked")}
         )
     {
         Icon(Icons.Default.PlayArrow, "Action")
     }
+}
+
+@Composable
+fun LogCatTextView()
+{
+    val content by logCatText
+    Text(content, modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState(), reverseScrolling = true))
 }
 
 @Preview(showBackground = true)
