@@ -1,14 +1,7 @@
 package io.github.manum45.openaa
 
-import android.content.Intent
-import android.hardware.usb.UsbAccessory
-import android.hardware.usb.UsbDevice
-import android.hardware.usb.UsbManager
-import android.os.Build.VERSION.SDK_INT
 import android.os.Bundle
-import android.os.Parcelable
 import android.util.Log
-import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
@@ -44,11 +36,13 @@ import androidx.lifecycle.Observer
 import io.github.manum45.openaa.ui.theme.OpenAATheme
 import kotlin.getValue
 
-val TAG = "OpenAA" + MainActivity::class.simpleName
+val TAG = "OpenAA_" + MainActivity::class.simpleName
 
-val logCatText = mutableStateOf("=== Logcat ===")
+val logCatText = mutableStateOf("=== Logcat ===\n")
+
 class MainActivity : ComponentActivity() {
 
+    var usbHandler: UsbHandler = UsbHandler()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,6 +59,8 @@ class MainActivity : ComponentActivity() {
         logCatViewModel.logCatOutput().observe(this, Observer { logMessage ->
             logCatText.value += "$logMessage\n"
         })
+
+        usbHandler.setup(this)
     }
 }
 
@@ -128,6 +124,15 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 }
 
 
+@Preview(showBackground = true)
+@Composable
+fun GreetingPreview() {
+    OpenAATheme {
+        Greeting("Android")
+    }
+}
+
+
 @Composable
 fun ActionButton(text: String)
 {
@@ -144,12 +149,4 @@ fun LogCatTextView()
 {
     val content by logCatText
     Text(content, modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState(), reverseScrolling = true))
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    OpenAATheme {
-        Greeting("Android")
-    }
 }
