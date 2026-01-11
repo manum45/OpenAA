@@ -1,11 +1,16 @@
 package io.github.manum45.openaa
 
+import android.R
+import android.content.Context
+import android.content.IntentFilter
+import android.hardware.usb.UsbManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import io.github.manum45.openaa.ui.theme.OpenAATheme
 import kotlin.getValue
@@ -42,14 +48,17 @@ val logCatText = mutableStateOf("=== Logcat ===\n")
 
 class MainActivity : ComponentActivity() {
 
-    var usbHandler: UsbHandler = UsbHandler()
+    var usbHandler: AutoUsbHandler = AutoUsbHandler()
+    var receiverRegisterd = false
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d(TAG, "Creating MainActivity")
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             OpenAATheme {
-                OpenAAApp()
+                OpenAAApp(usbHandler)
             }
         }
 
@@ -60,13 +69,26 @@ class MainActivity : ComponentActivity() {
             logCatText.value += "$logMessage\n"
         })
 
-        usbHandler.setup(this)
+        usbHandler.setup(getSystemService(Context.USB_SERVICE) as UsbManager)
+        if(!receiverRegisterd) {
+            Log.d(TAG, "Registering receiver")
+            receiverRegisterd = true
+            val filter = IntentFilter(usbHandler.ACTION_USB_ACCESSORY_ATTACHED)
+            filter.addAction(usbHandler.ACTION_USB_DEVICE_ATTACHED)
+            filter.addAction(usbHandler.ACTION_USB_ACCESSORY_HANDSHAKE)
+            this.registerReceiver(usbHandler, filter)
+        }
+
+    }
+
+    override fun onDestroy() {
+        this.unregisterReceiver(usbHandler)
+        super.onDestroy()
     }
 }
 
-@PreviewScreenSizes
 @Composable
-fun OpenAAApp() {
+fun OpenAAApp(usbHandler: AutoUsbHandler) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
 
     NavigationSuiteScaffold(
@@ -98,7 +120,7 @@ fun OpenAAApp() {
                     modifier = Modifier.padding(innerPadding)
                 )
                 ActionButton(
-                    "LetsGo"
+                    usbHandler
                 )
                 LogCatTextView()
             }
@@ -134,11 +156,14 @@ fun GreetingPreview() {
 
 
 @Composable
-fun ActionButton(text: String)
+fun ActionButton(usbHandler: AutoUsbHandler)
 {
     Button(
-        onClick = { Log.d(TAG, "ActionButton: Clicked")}
-        )
+        onClick = {
+            Log.d(TAG, "Logging USB connections")
+            usbHandler.enumerateDevices()
+        }
+    )
     {
         Icon(Icons.Default.PlayArrow, "Action")
     }
@@ -148,5 +173,5 @@ fun ActionButton(text: String)
 fun LogCatTextView()
 {
     val content by logCatText
-    Text(content, modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState(), reverseScrolling = true))
+    Text(content, modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState(), reverseScrolling = true).horizontalScroll(rememberScrollState()))
 }
