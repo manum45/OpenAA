@@ -44,7 +44,7 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
     private var inputStream: FileInputStream? = null
     private var outputStream: FileOutputStream? = null
 
-    private var buffer: ByteArray = ByteArray(maxBufLengthBytes)
+    private var inBuffer: ByteArray = ByteArray(maxBufLengthBytes)
 
     private var stopComm: Boolean = false
 
@@ -71,34 +71,95 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
         }
     }
 
+    fun read(): Int {
+        try {
+            var bytesRead = inputStream!!.read(inBuffer)
+            return bytesRead
+        }
+        catch (e: IOException) {
+            /// TODO: handle more gracefully?
+            Log.d(TAG, "Connection closed")
+            stopComm = true
+            return 0
+        }
+    }
+
+    fun write(data: ByteArray, length: Int) {
+
+        try {
+            for(i in 0..<length){
+                outputStream!!.write(data, 0, length)
+            }
+        }
+        catch (e: IOException) {
+            /// TODO: handle more gracefully?
+            Log.d(TAG, "Connection closed")
+            stopComm = true
+        }
+    }
+
+
+    fun sendVersionResponse() {
+        Log.d(TAG, "Sending version response")
+
+        /// send data according to expectation of handleVersionResponse in aasdk
+
+        val length = 12
+
+        var data: ByteArray = ByteArray(length)
+
+        //LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
+        data[0] = 0
+        data[1] = 2
+
+        // payload length. just a guess
+        data[2] = 0
+        data[3] = 8
+
+        // VERSION_RESPONSE
+        data[4] = 0
+        data[5] = 2
+
+        // major version
+        data[6] = 0
+        data[7] = 1
+
+        // minor version
+        data[8] = 0
+        data[9] = 1
+
+        // match
+        data[10] = 0
+        data[11] = 0
+
+        write(data, length)
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     override fun run() {
-        Log.d(TAG, "All systems go")
+        Log.d(TAG, "Starting communication with Accessory")
 
-        val inputStreamReader: InputStreamReader = InputStreamReader(inputStream)
-        // https://developer.android.com/develop/connectivity/usb/accessory
-        val bufferedReader: BufferedReader = BufferedReader(inputStreamReader, maxBufLengthBytes)
         if(inputStream != null) {
             while (!stopComm) {
-                try {
-                    var bytesRead = inputStream!!.read(buffer)
+                var bytesRead = read()
 
-                    if(bytesRead > 0)
+                if(bytesRead > 0)
+                {
+                    var msg :String = ""
+
+                    for(i in 0..<bytesRead)
                     {
-                        for(i in 0..<bytesRead)
-                        {
-                            // how to decode this?
-                            // data sent by open AA: ?? 51 ??
-                            // data received: 00 03 00 06 00 01 00 01 00 01
-                            // https://github.com/f1xpl/aasdk/blob/development/src/USB/AccessoryModeProtocolVersionQuery.cpp
-                            Log.d(TAG, buffer[i].toHexString())
-                        }
+                       msg += inBuffer[i].toHexString() + " "
                     }
+                    Log.d(TAG, "Received msg: $msg")
 
-                } catch (e: IOException) {
-                    /// TODO: handle more gracefully
-                    Log.d(TAG, "Connection closed")
-                    stopComm = true
+                    // check if this is sendVersionRequest from aasdk
+                    if(inBuffer[3].toInt() == 6 && inBuffer[5].toInt() == 1) {
+                        sendVersionResponse()
+                    }
+                    else {
+                        Log.e(TAG, "ERROR: unhandled message received")
+                    }
                 }
             }
         }
