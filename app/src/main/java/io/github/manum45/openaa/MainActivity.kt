@@ -42,7 +42,7 @@ import androidx.lifecycle.Observer
 import io.github.manum45.openaa.ui.theme.OpenAATheme
 import kotlin.getValue
 
-val TAG = "OpenAA_" + MainActivity::class.simpleName
+val TAG = "OpenAA"
 
 val logCatText = mutableStateOf("=== Logcat ===\n")
 
@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "Registering receiver")
             receiverRegisterd = true
             val filter = IntentFilter(usbHandler.ACTION_USB_ACCESSORY_ATTACHED)
-            filter.addAction(usbHandler.ACTION_USB_DEVICE_ATTACHED)
+            filter.addAction(usbHandler.ACTION_USB_ACCESSORY_DETACHED)
             filter.addAction(usbHandler.ACTION_USB_ACCESSORY_HANDSHAKE)
             this.registerReceiver(usbHandler, filter)
         }
