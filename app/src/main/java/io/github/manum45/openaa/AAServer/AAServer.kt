@@ -3,8 +3,8 @@ package io.github.manum45.openaa.AAServer
 import android.content.Context
 import com.google.protobuf.GeneratedMessageLite
 import com.google.protobuf.Parser
-import io.github.manum45.openaa.AAServer.proto.PingRequest
-import io.github.manum45.openaa.AAServer.proto.PingResponse
+import io.github.manum45.openaa.AAServer.proto.PingRequestProto
+import io.github.manum45.openaa.AAServer.proto.PingResponseProto
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.ByteBuffer
@@ -274,8 +274,8 @@ class HeadUnitLink(
     }
 
     private fun handlePingRequest(message: Message) {
-        val request = parseProto(message.content, 2, PingRequest.parser())
-        val response = PingResponse.newBuilder().setTimestamp(request.timestamp).build()
+        val request = parseProto(message.content, 2, PingRequestProto.PingRequest.parser())
+        val response = PingResponseProto.PingResponse.newBuilder().setTimestamp(request.timestamp).build()
         
         val payload = ByteBuffer.allocate(2 + response.serializedSize)
             .order(ByteOrder.BIG_ENDIAN)

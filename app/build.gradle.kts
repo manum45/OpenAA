@@ -38,6 +38,8 @@ dependencies {
 
     // Protobuf Java runtime (required for schema compilation)
     implementation("com.google.protobuf:protobuf-java:3.24.4")
+    implementation("com.google.protobuf:protobuf-kotlin:4.33.5")
+
 }
 
 
@@ -54,6 +56,9 @@ protobuf {
             task.builtins {
                 // Generate Java classes (required for DataStore)
                 create("java") {
+                    option("lite") // Use the "lite" runtime for smaller binary size
+                }
+                create("kotlin") {
                     option("lite") // Use the "lite" runtime for smaller binary size
                 }
             }
