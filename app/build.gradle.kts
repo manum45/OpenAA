@@ -1,14 +1,40 @@
+// build.gradle.kts
+
 plugins {
+    // Android plugins should come first
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+
+    // Apply the Protobuf plugin. This is what enables the 'proto' source set.
+    alias(libs.plugins.protobuf)
+}
+
+// 4. PROTOBUF CONFIGURATION BLOCK
+// This block must be at the top level.
+protobuf {
+    protoc {
+        // It's recommended to use the same minor version as your dependencies
+        artifact = "com.google.protobuf:protoc:3.25.3"
+    }
+
+    generateProtoTasks {
+        ofSourceSet("main").forEach { task ->
+            task.plugins {
+                java { }
+                kotlin { }
+            }
+        }
+    }
 }
 
 android {
     namespace = "io.github.manum45.openaa"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36 // Simplified version declaration
+
+    // The Android sourceSets block does NOT need the proto configuration.
+    // The top-level one handles it. The Android plugin will automatically
+    // pick up the generated code from the build/generated directory.
 
     defaultConfig {
         applicationId = "io.github.manum45.openaa"
@@ -52,6 +78,7 @@ android {
     }
 }
 
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -63,6 +90,12 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
+
+    // Make sure your protobuf dependencies match the 'protoc' compiler version
+    implementation("com.google.protobuf:protobuf-java:3.25.3")
+    implementation("com.google.protobuf:protobuf-kotlin:3.25.3")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

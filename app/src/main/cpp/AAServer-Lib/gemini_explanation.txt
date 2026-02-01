@@ -1,0 +1,18 @@
+This code implements a server that acts as a bridge between a local application and an Android Auto head unit. Here's a breakdown of the key components in the cpp/AAServer directory:
+•
+main.cpp: This is the entry point of the server. It initializes all the components, parses command-line arguments, and starts listening for both Android Auto connections and local client connections.
+•
+AaCommunicator: This class is the core component for handling communication with the Android Auto head unit. It manages the USB connection, handles setting up communication channels, and sends/receives messages.
+•
+SocketCommunicator: This component creates a local socket that other applications can connect to. It listens for incoming client connections and forwards messages between the local clients and the AaCommunicator.
+•
+ModeSwitcher: This is responsible for switching the connected USB device into "accessory mode," which is required for Android Auto communication to begin.
+•
+Library: This appears to be a wrapper around the underlying USB library used to find and interact with USB devices.
+•
+Udc: Represents the USB Device Controller, which is the hardware interface for the USB connection.
+•
+Packet and PacketType: These define the structure of messages exchanged with local clients over the socket. PacketType is an enum for different kinds of messages like requesting a channel or sending raw data.
+•
+ChannelType: This enum defines the different types of data channels used in Android Auto communication (e.g., audio, video, input).
+In essence, this server listens for a USB connection from an Android device. Once a device is connected, it switches it to accessory mode and establishes an Android Auto session using AaCommunicator. It also opens a local socket via SocketCommunicator so that other local applications can send and receive Android Auto data through this server.
