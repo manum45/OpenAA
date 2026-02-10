@@ -15,6 +15,8 @@ import android.os.Parcelable
 import android.util.Log
 import androidx.core.content.ContextCompat.getSystemService
 import androidx.core.content.ContextCompat.registerReceiver
+import io.github.manum45.openaa.AAServer.HeadUnitLink
+import io.github.manum45.openaa.AAServer.ITransport
 import kotlinx.coroutines.Runnable
 import java.io.BufferedReader
 import java.io.FileInputStream
@@ -35,7 +37,62 @@ inline fun <reified T : Parcelable> Bundle.parcelable(key: String): T? = when {
 }
 
 
-class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbManager) : Runnable{
+fun byteArrayToHex(byteArray: ByteArray, numBytes: Int): String {
+    var msg :String = ""
+
+    for(i in 0..<numBytes)
+    {
+        msg += byteArray[i].toHexString() + " "
+    }
+    return msg
+}
+
+class Transport() : ITransport {
+    private var inputStream: FileInputStream? = null
+    private var outputStream: FileOutputStream? = null
+
+    fun registerStreams(inputStream: FileInputStream, outputStream: FileOutputStream) {
+        this.inputStream = inputStream
+        this.outputStream = outputStream
+    }
+
+    override fun write(data: ByteArray){
+        Log.d(TAG, "Transport write:")
+        Log.d(TAG, byteArrayToHex(data, data.size))
+        /// TODO: handle return value
+        write(data, data.size)
+    }
+
+    fun write(data: ByteArray, length: Int): Boolean {
+        var success = true
+        try {
+            for(i in 0..<length){
+                outputStream!!.write(data, 0, length)
+            }
+        }
+        catch (e: IOException) {
+            /// TODO: handle more gracefully?
+            Log.d(TAG, "Connection closed")
+            success = false
+        }
+        return success
+    }
+
+    fun read(inBuffer: ByteArray): Int {
+        try {
+            var bytesRead = inputStream!!.read(inBuffer)
+            return bytesRead
+        }
+        catch (e: IOException) {
+            /// TODO: handle more gracefully?
+            Log.d(TAG, "Connection closed")
+            return -1
+        }
+    }
+}
+
+
+class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbManager, context: Context) : Runnable{
 
     // https://developer.android.com/develop/connectivity/usb/accessory
     private val maxBufLengthBytes: Int = 16384
@@ -48,6 +105,11 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
     private var stopComm: Boolean = false
 
+    private var transport: Transport = Transport();
+
+    private var headUnitLink: HeadUnitLink = HeadUnitLink(transport, context);
+
+
 
 
     fun openAccessory() {
@@ -57,6 +119,7 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
         fileDescriptor?.fileDescriptor?.also { fd ->
             inputStream = FileInputStream(fd)
             outputStream = FileOutputStream(fd)
+            transport.registerStreams(inputStream!!, outputStream!!)
             val thread = Thread(null, this, "AccessoryCommunicatorThread")
             thread.start()
         }
@@ -71,69 +134,42 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
         }
     }
 
-    fun read(): Int {
-        try {
-            var bytesRead = inputStream!!.read(inBuffer)
-            return bytesRead
-        }
-        catch (e: IOException) {
-            /// TODO: handle more gracefully?
-            Log.d(TAG, "Connection closed")
-            stopComm = true
-            return 0
-        }
-    }
 
-    fun write(data: ByteArray, length: Int) {
-
-        try {
-            for(i in 0..<length){
-                outputStream!!.write(data, 0, length)
-            }
-        }
-        catch (e: IOException) {
-            /// TODO: handle more gracefully?
-            Log.d(TAG, "Connection closed")
-            stopComm = true
-        }
-    }
-
-
-    fun sendVersionResponse() {
-        Log.d(TAG, "Sending version response")
-
-        /// send data according to expectation of handleVersionResponse in aasdk
-
-        val length = 12
-
-        var data: ByteArray = ByteArray(length)
-
-        //LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
-        data[0] = 0
-        data[1] = 2
-
-        // payload length. just a guess
-        data[2] = 0
-        data[3] = 8
-
-        // VERSION_RESPONSE
-        data[4] = 0
-        data[5] = 2
-
-        // major version
-        data[6] = 0
-        data[7] = 1
-
-        // minor version
-        data[8] = 0
-        data[9] = 1
-
-        // match
-        data[10] = 0
-        data[11] = 0
-
-        write(data, length)
-    }
+    //fun sendVersionResponse() {
+    //    Log.d(TAG, "Sending version response")
+//
+    //    /// send data according to expectation of handleVersionResponse in aasdk
+//
+    //    val length = 12
+//
+    //    var data: ByteArray = ByteArray(length)
+//
+    //    //LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
+    //    data[0] = 0
+    //    data[1] = 2
+//
+    //    // payload length. just a guess
+    //    data[2] = 0
+    //    data[3] = 8
+//
+    //    // VERSION_RESPONSE
+    //    data[4] = 0
+    //    data[5] = 2
+//
+    //    // major version
+    //    data[6] = 0
+    //    data[7] = 1
+//
+    //    // minor version
+    //    data[8] = 0
+    //    data[9] = 1
+//
+    //    // match
+    //    data[10] = 0
+    //    data[11] = 0
+//
+    //    write(data, length)
+    //}
 
     @OptIn(ExperimentalStdlibApi::class)
     override fun run() {
@@ -141,25 +177,28 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
         if(inputStream != null) {
             while (!stopComm) {
-                var bytesRead = read()
+                var bytesRead = transport.read(inBuffer)
 
                 if(bytesRead > 0)
                 {
-                    var msg :String = ""
-
-                    for(i in 0..<bytesRead)
-                    {
-                       msg += inBuffer[i].toHexString() + " "
-                    }
+                    var msg = byteArrayToHex(inBuffer, bytesRead)
                     Log.d(TAG, "Received msg: $msg")
 
-                    // check if this is sendVersionRequest from aasdk
-                    if(inBuffer[3].toInt() == 6 && inBuffer[5].toInt() == 1) {
-                        sendVersionResponse()
-                    }
-                    else {
-                        Log.e(TAG, "ERROR: unhandled message received")
-                    }
+
+                    headUnitLink.receiveData(inBuffer)
+
+
+                    // // check if this is sendVersionRequest from aasdk
+                    // if(inBuffer[3].toInt() == 6 && inBuffer[5].toInt() == 1) {
+                    //     sendVersionResponse()
+                    // }
+                    // else {
+                    //     Log.e(TAG, "ERROR: unhandled message received")
+                    // }
+                }
+                else if(bytesRead == -1)
+                {
+                    stopComm = true
                 }
             }
         }
@@ -250,7 +289,7 @@ class AutoUsbHandler : BroadcastReceiver() {
                         Log.e(TAG, "ERROR: trying to start communicating, but usbManager is null")
                     }
                     else {
-                        communicator = AccessoryCommunicator(device_acc, usbManager!!)
+                        communicator = AccessoryCommunicator(device_acc, usbManager!!, context)
                         communicator!!.openAccessory()
                     }
                 }

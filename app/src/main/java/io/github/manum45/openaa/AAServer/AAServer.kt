@@ -1,10 +1,17 @@
+/**
+ * This file is almost completely vibecoded, based on AACS/AAServer
+ */
+
+
 package io.github.manum45.openaa.AAServer
 
 import android.content.Context
+import android.util.Log
 import com.google.protobuf.GeneratedMessageLite
 import com.google.protobuf.Parser
 import io.github.manum45.openaa.AAServer.proto.PingRequestProto
 import io.github.manum45.openaa.AAServer.proto.PingResponseProto
+import io.github.manum45.openaa.TAG
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.ByteBuffer
@@ -203,6 +210,7 @@ class HeadUnitLink(
     }
 
     private fun handleVersionRequest(message: Message) {
+        Log.d(TAG, "AAServer: handling version request")
         if (message.content.size < 6) return
         val bb = ByteBuffer.wrap(message.content).order(ByteOrder.BIG_ENDIAN)
         bb.getShort() // skip message type
@@ -216,6 +224,7 @@ class HeadUnitLink(
     }
     
     private fun handleSslHandshake(message: Message) {
+        Log.d(TAG, "AAServer: handling ssl handshake")
         val handshakeData = message.content.copyOfRange(2, message.content.size)
         
         netReceiveBuffer.compact()
@@ -260,13 +269,16 @@ class HeadUnitLink(
 
 
     private fun sendVersionResponse(major: Short, minor: Short) {
+        /// TODO: use protobuffers
         val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
             .putShort(MessageType.VersionResponse)
             .putShort(major)
             .putShort(minor)
             .putShort(0) // version match
             .array()
-        sendMessage(0, FrameType.BULK or EncryptionType.PLAIN, payload)
+        //sendMessage(0, FrameType.BULK or EncryptionType.PLAIN, payload)
+        //flag 0x2 = LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
+        sendMessage(0, 0x2, payload)
     }
     
     private fun <T : GeneratedMessageLite<T, *>> parseProto(bytes: ByteArray, offset: Int, parser: Parser<T>): T {
@@ -274,9 +286,11 @@ class HeadUnitLink(
     }
 
     private fun handlePingRequest(message: Message) {
+        Log.d(TAG, "AAServer: handling ping request")
         val request = parseProto(message.content, 2, PingRequestProto.PingRequest.parser())
         val response = PingResponseProto.PingResponse.newBuilder().setTimestamp(request.timestamp).build()
-        
+
+        /// TODO: use protobuffers
         val payload = ByteBuffer.allocate(2 + response.serializedSize)
             .order(ByteOrder.BIG_ENDIAN)
             .putShort(MessageType.PingResponse)
