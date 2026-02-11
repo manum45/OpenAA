@@ -1,9 +1,12 @@
 /**
- * This file is almost completely vibecoded, based on AACS/AAServer
+ * this file is generated with Gemini based on
+ * https://github.com/tomasz-grobelny/AACS
+ *
+ * License: GPLv3
  */
 
 
-package io.github.manum45.openaa.AAServer
+package io.github.manum45.openaa
 
 import android.content.Context
 import android.util.Log
@@ -11,8 +14,6 @@ import com.google.protobuf.GeneratedMessageLite
 import com.google.protobuf.Parser
 import io.github.manum45.openaa.AAServer.proto.PingRequestProto
 import io.github.manum45.openaa.AAServer.proto.PingResponseProto
-import io.github.manum45.openaa.IUsbStreamer
-import io.github.manum45.openaa.TAG
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.ByteBuffer
@@ -26,6 +27,7 @@ import java.security.spec.PKCS8EncodedKeySpec
 import javax.net.ssl.*
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
+import java.security.Security
 import kotlin.experimental.or
 
 
@@ -116,12 +118,14 @@ class MessageHandler(
     /**
      * Processes raw data received from the transport layer.
      */
-    fun receiveData(data: ByteArray) {
-        receiveBuffer += data
+    fun receiveData(data: ByteArray, numBytes: Int) {
+        /// TODO: don't copy that much data all the time everywhere
+        receiveBuffer += data.copyOfRange(0, numBytes)
         processReceiveBuffer()
     }
 
     private fun processReceiveBuffer() {
+        // data has to be at least 4 bytes: 1 byte channel, 1 byte flags, 2 bytes length
         while (receiveBuffer.size >= 4) {
             val length = ((receiveBuffer[2].toInt() and 0xFF) shl 8) or (receiveBuffer[3].toInt() and 0xFF)
             if (receiveBuffer.size >= 4 + length) {
@@ -137,7 +141,7 @@ class MessageHandler(
                 
                 if(messageContent != null) {
                     val message = Message(channel, flags, messageContent)
-                    handleMessageContent(message)
+                    handleMessage(message)
                 }
 
                 receiveBuffer = receiveBuffer.copyOfRange(4 + length, receiveBuffer.size)
@@ -148,8 +152,11 @@ class MessageHandler(
     }
 
 
-    private fun handleMessageContent(message: Message) {
+    private fun handleMessage(message: Message) {
         if (message.content.size < 2) return
+
+
+        /// Log.d(TAG, "Handling message content: " + byteArrayToHex(message.content, message.content.size))
 
         val messageType = ByteBuffer.wrap(message.content, 0, 2)
             .order(ByteOrder.BIG_ENDIAN).short
@@ -208,6 +215,7 @@ class MessageHandler(
         while (true) {
             when (sslEngine.handshakeStatus) {
                 SSLEngineResult.HandshakeStatus.NEED_UNWRAP -> {
+                    Log.d(TAG, "Ssl handshake: Unwrap")
                     if (netReceiveBuffer.hasRemaining()) {
                         sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
                     } else {
@@ -216,6 +224,7 @@ class MessageHandler(
                     }
                 }
                 SSLEngineResult.HandshakeStatus.NEED_WRAP -> {
+                    Log.d(TAG, "Ssl handshake: Wrap")
                     netSendBuffer.clear()
                     val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
                     if (result.bytesProduced() > 0) {
@@ -233,10 +242,16 @@ class MessageHandler(
                     }
                 }
                 SSLEngineResult.HandshakeStatus.NEED_TASK -> {
+                    Log.d(TAG, "Ssl handshake: Task")
                     sslEngine.delegatedTask?.run()
                 }
-                SSLEngineResult.HandshakeStatus.FINISHED, 
-                SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING -> return
+                SSLEngineResult.HandshakeStatus.FINISHED -> {
+                    Log.d(TAG, "Ssl handshake: Finished")
+                }
+                SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING -> {
+                    Log.d(TAG, "Ssl handshake: Not Handshaking")
+                    return
+                }
             }
         }
     }
@@ -335,7 +350,7 @@ class MessageHandler(
     companion object {
         init {
             // Required for loading PEM private key
-            java.security.Security.addProvider(BouncyCastleProvider())
+            Security.addProvider(BouncyCastleProvider())
         }
     }
 

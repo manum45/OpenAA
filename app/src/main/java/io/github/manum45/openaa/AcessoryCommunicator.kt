@@ -5,7 +5,6 @@ import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import io.github.manum45.openaa.AAServer.MessageHandler
 import kotlinx.coroutines.Runnable
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -65,7 +64,7 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
                 if(bytesRead > 0)
                 {
-                    messageHandler.receiveData(inBuffer)
+                    messageHandler.receiveData(inBuffer, bytesRead)
                 }
                 else if(bytesRead == -1)
                 {
