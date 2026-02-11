@@ -36,7 +36,7 @@ import kotlin.text.clear
 
 class SslHandler (private val context: Context) {
 
-    // Buffers for SSLEngine
+    // Buffers for SSLEngine: appbuffers are unencrypted, netbuffers are encrypted
     private val appSendBuffer: ByteBuffer = ByteBuffer.allocate(16384)
     private val netSendBuffer: ByteBuffer = ByteBuffer.allocate(32768)
     private val appReceiveBuffer: ByteBuffer = ByteBuffer.allocate(16384)
@@ -146,49 +146,75 @@ class SslHandler (private val context: Context) {
 
 
     fun performSslHandshake(handshakeData: ByteArray): ByteArray? {
-        sslEngine.beginHandshake()
-
         netReceiveBuffer.compact()
         netReceiveBuffer.put(handshakeData)
         netReceiveBuffer.flip()
 
-        while (true) {
-            when (sslEngine.handshakeStatus) {
-                SSLEngineResult.HandshakeStatus.NEED_UNWRAP -> {
-                    Log.d(TAG, "Ssl handshake: Unwrap")
-                    if (netReceiveBuffer.hasRemaining()) {
-                        sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
-                    } else {
-                        netReceiveBuffer.compact()
-                        Log.d(TAG, "Error: not enough data, current implementation can't handle partial inpu")
-                        return null // Need more data from peer
-                    }
-                }
-                SSLEngineResult.HandshakeStatus.NEED_WRAP -> {
-                    Log.d(TAG, "Ssl handshake: Wrap")
-                    netSendBuffer.clear()
-                    val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
-                    if (result.bytesProduced() > 0) {
-                        netSendBuffer.flip()
-                        val bytesToSend = ByteArray(netSendBuffer.remaining())
-                        netSendBuffer.get(bytesToSend)
+        sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
 
-                        return bytesToSend
-                    }
-                }
-                SSLEngineResult.HandshakeStatus.NEED_TASK -> {
-                    Log.d(TAG, "Ssl handshake: Task")
-                    sslEngine.delegatedTask?.run()
-                }
-                SSLEngineResult.HandshakeStatus.FINISHED -> {
-                    Log.d(TAG, "Ssl handshake: Finished")
-                }
-                SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING -> {
-                    Log.d(TAG, "Ssl handshake: Not Handshaking")
-                    return null
-                }
+        if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
+            /// according to Gemini, the appSendBuffer is ignored when wrap is called during
+            /// handshake, because ssl produces data for the handshake itself
+            val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
+            if (result.bytesProduced() > 0) {
+                netSendBuffer.flip()
+                val bytesToSend = ByteArray(netSendBuffer.remaining())
+                netSendBuffer.get(bytesToSend)
+                return bytesToSend
+            }
+            else {
+                Log.e(TAG, "Ssl handshake: Error: no data to be sent")
+                return null
             }
         }
+        else {
+            Log.e(TAG, "Ssl handshake: Error: wrong status")
+            return null
+        }
+
+
+        //sslEngine.beginHandshake()
+//
+        //netReceiveBuffer.compact()
+        //netReceiveBuffer.put(handshakeData)
+        //netReceiveBuffer.flip()
+//
+        //while (true) {
+        //    when (sslEngine.handshakeStatus) {
+        //        SSLEngineResult.HandshakeStatus.NEED_UNWRAP -> {
+        //            Log.d(TAG, "Ssl handshake: Unwrap")
+        //            if (netReceiveBuffer.hasRemaining()) {
+        //                sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
+        //            } else {
+        //                netReceiveBuffer.compact()
+        //                Log.d(TAG, "Error: not enough data, current implementation can't handle partial inpu")
+        //                return null // Need more data from peer
+        //            }
+        //        }
+        //        SSLEngineResult.HandshakeStatus.NEED_WRAP -> {
+        //            Log.d(TAG, "Ssl handshake: Wrap")
+        //            netSendBuffer.clear()
+        //            val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
+        //            if (result.bytesProduced() > 0) {
+        //                netSendBuffer.flip()
+        //                val bytesToSend = ByteArray(netSendBuffer.remaining())
+        //                netSendBuffer.get(bytesToSend)
+//
+        //                return bytesToSend
+        //            }
+        //        }
+        //        SSLEngineResult.HandshakeStatus.NEED_TASK -> {
+        //            Log.d(TAG, "Ssl handshake: Task")
+        //            sslEngine.delegatedTask?.run()
+        //        }
+        //        SSLEngineResult.HandshakeStatus.FINISHED -> {
+        //            Log.d(TAG, "Ssl handshake: Finished")
+        //        }
+        //        SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING -> {
+        //            Log.d(TAG, "Ssl handshake: Not Handshaking")
+        //            return null
+        //        }
+        //    }
     }
 
 }

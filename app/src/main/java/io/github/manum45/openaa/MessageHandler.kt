@@ -178,7 +178,7 @@ class MessageHandler(
             .putShort(minor)
             .putShort(0) // version match
             .array()
-        sendMessage(0, FrameType.LAST.value or EncryptionType.PLAIN.value, payload)
+        sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, payload)
     }
 
     private fun handleSslHandshake(message: Message) {
