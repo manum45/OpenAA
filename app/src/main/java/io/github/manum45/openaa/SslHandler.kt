@@ -1,3 +1,10 @@
+/**
+ * this file is generated with Gemini based on
+ * https://github.com/tomasz-grobelny/AACS
+ *
+ * License: GPLv3
+ */
+
 package io.github.manum45.openaa
 
 import android.content.Context
