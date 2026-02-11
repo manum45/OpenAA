@@ -59,17 +59,15 @@ class MessageHandler(
     var onMessageReceived: ((Message) -> Unit)? = null
 
     private var receiveBuffer = byteArrayOf()
-    private lateinit var sslEngine: SSLEngine
 
-    // Buffers for SSLEngine
-    private val appSendBuffer: ByteBuffer = ByteBuffer.allocate(16384)
-    private val netSendBuffer: ByteBuffer = ByteBuffer.allocate(32768)
-    private val appReceiveBuffer: ByteBuffer = ByteBuffer.allocate(16384)
-    private val netReceiveBuffer: ByteBuffer = ByteBuffer.allocate(32768)
+    private var sslHandler: SslHandler = SslHandler(context)
+
+
+
 
 
     init {
-        initializeSslContext()
+        sslHandler.initializeSslContext()
     }
 
     private fun <T : GeneratedMessageLite<T, *>> parseProto(bytes: ByteArray, offset: Int, parser: Parser<T>): T {
@@ -82,7 +80,7 @@ class MessageHandler(
      */
     fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) {
         val dataToSend = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
-            encryptPayload(payload)
+            sslHandler.encryptPayload(payload)
         } else {
             payload
         }
@@ -117,7 +115,7 @@ class MessageHandler(
                 val payload = receiveBuffer.copyOfRange(4, 4 + length)
 
                 val messageContent = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
-                    decryptMessage(payload)
+                    sslHandler.decryptMessage(payload)
                 } else {
                     payload
                 }
@@ -183,61 +181,27 @@ class MessageHandler(
         sendMessage(0, FrameType.LAST.value or EncryptionType.PLAIN.value, payload)
     }
 
-
-    
     private fun handleSslHandshake(message: Message) {
+
         Log.d(TAG, "AAServer: handling ssl handshake")
         val handshakeData = message.content.copyOfRange(2, message.content.size)
-        
-        netReceiveBuffer.compact()
-        netReceiveBuffer.put(handshakeData)
-        netReceiveBuffer.flip()
 
-        while (true) {
-            when (sslEngine.handshakeStatus) {
-                SSLEngineResult.HandshakeStatus.NEED_UNWRAP -> {
-                    Log.d(TAG, "Ssl handshake: Unwrap")
-                    if (netReceiveBuffer.hasRemaining()) {
-                        sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
-                    } else {
-                        netReceiveBuffer.compact()
-                        return // Need more data from peer
-                    }
-                }
-                SSLEngineResult.HandshakeStatus.NEED_WRAP -> {
-                    Log.d(TAG, "Ssl handshake: Wrap")
-                    netSendBuffer.clear()
-                    val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
-                    if (result.bytesProduced() > 0) {
-                        netSendBuffer.flip()
-                        val bytesToSend = ByteArray(netSendBuffer.remaining())
-                        netSendBuffer.get(bytesToSend)
+        val bytesToSend = sslHandler.performSslHandshake(handshakeData)
 
-                        val responsePayload = ByteBuffer.allocate(2 + bytesToSend.size)
-                            .order(ByteOrder.BIG_ENDIAN)
-                            .putShort(MessageType.SSLHANDSHAKE.value)
-                            .put(bytesToSend)
-                            .array()
-
-                        sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
-                    }
-                }
-                SSLEngineResult.HandshakeStatus.NEED_TASK -> {
-                    Log.d(TAG, "Ssl handshake: Task")
-                    sslEngine.delegatedTask?.run()
-                }
-                SSLEngineResult.HandshakeStatus.FINISHED -> {
-                    Log.d(TAG, "Ssl handshake: Finished")
-                }
-                SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING -> {
-                    Log.d(TAG, "Ssl handshake: Not Handshaking")
-                    return
-                }
-            }
+        if(bytesToSend != null)
+        {
+            val responsePayload = ByteBuffer.allocate(2 + bytesToSend.size)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putShort(MessageType.SSLHANDSHAKE.value)
+                .put(bytesToSend)
+                .array()
+            sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
+        }
+        else
+        {
+            Log.e(TAG, "AAServer: ssl handshake failed")
         }
     }
-
-
 
     private fun handlePingRequest(message: Message) {
         Log.d(TAG, "AAServer: handling ping request")
@@ -254,106 +218,4 @@ class MessageHandler(
         sendMessage(0, FrameType.BULK.value or EncryptionType.ENCRYPTED.value, payload)
     }
 
-
-
-
-
-
-
-    private fun initializeSslContext() {
-        // Load certificate and private key from assets
-        val certInputStream = context.assets.open("ssl/android_auto.crt")
-        val keyInputStream = context.assets.open("ssl/android_auto.key")
-
-        val certificate = loadCertificate(certInputStream)
-        val privateKey = loadPrivateKey(keyInputStream)
-
-        // Set up KeyStore
-        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
-        keyStore.load(null, null)
-        keyStore.setKeyEntry("default", privateKey, "".toCharArray(), arrayOf(certificate))
-
-        // Set up KeyManagerFactory
-        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
-        kmf.init(keyStore, "".toCharArray())
-
-        // Set up a permissive TrustManager that trusts all certificates
-        val trustAllManager = object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        }
-
-        // Set up SSLContext
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(kmf.keyManagers, arrayOf(trustAllManager), null)
-
-        // Configure SSLEngine
-        sslEngine = sslContext.createSSLEngine()
-        sslEngine.useClientMode = false
-        sslEngine.enabledProtocols = arrayOf("TLSv1.2") // As per C++ code disabling TLSv1.3
-
-        netReceiveBuffer.limit(0) // Initially no data to read
-    }
-
-    private fun loadCertificate(certInputStream: InputStream): X509Certificate {
-        val cf = CertificateFactory.getInstance("X.509")
-        return cf.generateCertificate(certInputStream) as X509Certificate
-    }
-
-    private fun loadPrivateKey(keyInputStream: InputStream): PrivateKey {
-        val pemReader = PemReader(InputStreamReader(keyInputStream))
-        val pemObject = pemReader.readPemObject()
-        val keySpec = PKCS8EncodedKeySpec(pemObject.content)
-        val kf = KeyFactory.getInstance("RSA")
-        return kf.generatePrivate(keySpec)
-    }
-
-
-
-    private fun encryptPayload(payload: ByteArray): ByteArray? {
-        appSendBuffer.clear()
-        netSendBuffer.clear()
-        appSendBuffer.put(payload)
-        appSendBuffer.flip()
-
-        val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
-        return if (result.status == SSLEngineResult.Status.OK) {
-            netSendBuffer.flip()
-            val encrypted = ByteArray(netSendBuffer.remaining())
-            netSendBuffer.get(encrypted)
-            encrypted
-        } else {
-            throw SSLException("SSL wrap error: ${result.status}")
-        }
-    }
-    
-    companion object {
-        init {
-            // Required for loading PEM private key
-            Security.addProvider(BouncyCastleProvider())
-        }
-    }
-
-    private fun decryptMessage(encryptedMsg: ByteArray): ByteArray? {
-        netReceiveBuffer.compact()
-        netReceiveBuffer.put(encryptedMsg)
-        netReceiveBuffer.flip()
-
-        val result = sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
-        return when (result.status) {
-            SSLEngineResult.Status.OK -> {
-                appReceiveBuffer.flip()
-                val decrypted = ByteArray(appReceiveBuffer.remaining())
-                appReceiveBuffer.get(decrypted)
-                appReceiveBuffer.compact()
-                decrypted
-            }
-            SSLEngineResult.Status.BUFFER_UNDERFLOW -> {
-                netReceiveBuffer.compact()
-                null // Need more data
-            }
-            else -> throw SSLException("SSL unwrap error: ${result.status}")
-        }
-    }
 }
