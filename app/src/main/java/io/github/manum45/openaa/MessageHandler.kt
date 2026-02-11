@@ -44,23 +44,6 @@ data class Message(val channel: Byte, val flags: Byte, val content: ByteArray) {
 
 
 
-// These constants would typically be in their own files.
-object MessageType {
-    const val VersionRequest: Short = 0x0001
-    const val VersionResponse: Short = 0x0002
-    const val SslHandshake: Short = 0x0003
-    const val PingRequest: Short = 0x0006
-    const val PingResponse: Short = 0x0007
-}
-
-object EncryptionType {
-    const val PLAIN: Byte = 0x4
-    const val ENCRYPTED: Byte = 0x8
-}
-
-object FrameType {
-    const val BULK: Byte = 0x0
-}
 
 /**
  * Handles communication with an Android Auto Head Unit.
@@ -98,7 +81,7 @@ class MessageHandler(
      * Sends a message to the head unit.
      */
     fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) {
-        val dataToSend = if ((flags.toInt() and EncryptionType.ENCRYPTED.toInt()) != 0) {
+        val dataToSend = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
             encryptPayload(payload)
         } else {
             payload
@@ -133,7 +116,7 @@ class MessageHandler(
                 val flags = receiveBuffer[1]
                 val payload = receiveBuffer.copyOfRange(4, 4 + length)
 
-                val messageContent = if ((flags.toInt() and EncryptionType.ENCRYPTED.toInt()) != 0) {
+                val messageContent = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
                     decryptMessage(payload)
                 } else {
                     payload
@@ -162,9 +145,9 @@ class MessageHandler(
             .order(ByteOrder.BIG_ENDIAN).short
 
         when (messageType) {
-            MessageType.VersionRequest -> handleVersionRequest(message)
-            MessageType.SslHandshake -> handleSslHandshake(message)
-            MessageType.PingRequest -> handlePingRequest(message)
+            MessageType.VERSIONREQUEST.value -> handleVersionRequest(message)
+            MessageType.SSLHANDSHAKE.value -> handleSslHandshake(message)
+            MessageType.PINGREQUEST.value -> handlePingRequest(message)
             else -> {
                 Log.e(TAG, "Unhandled message type: $messageType")
                 onMessageReceived?.invoke(message)
@@ -192,14 +175,12 @@ class MessageHandler(
     private fun sendVersionResponse(major: Short, minor: Short) {
         /// TODO: use protobuffers
         val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
-            .putShort(MessageType.VersionResponse)
+            .putShort(MessageType.VERSIONRESPONSE.value)
             .putShort(major)
             .putShort(minor)
             .putShort(0) // version match
             .array()
-        //sendMessage(0, FrameType.BULK or EncryptionType.PLAIN, payload)
-        //flag 0x2 = LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
-        sendMessage(0, 0x2, payload)
+        sendMessage(0, FrameType.LAST.value or EncryptionType.PLAIN.value, payload)
     }
 
 
@@ -234,11 +215,11 @@ class MessageHandler(
 
                         val responsePayload = ByteBuffer.allocate(2 + bytesToSend.size)
                             .order(ByteOrder.BIG_ENDIAN)
-                            .putShort(MessageType.SslHandshake)
+                            .putShort(MessageType.SSLHANDSHAKE.value)
                             .put(bytesToSend)
                             .array()
-                        
-                        sendMessage(0, FrameType.BULK or EncryptionType.PLAIN, responsePayload)
+
+                        sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
                     }
                 }
                 SSLEngineResult.HandshakeStatus.NEED_TASK -> {
@@ -266,11 +247,11 @@ class MessageHandler(
         /// TODO: use protobuffers
         val payload = ByteBuffer.allocate(2 + response.serializedSize)
             .order(ByteOrder.BIG_ENDIAN)
-            .putShort(MessageType.PingResponse)
+            .putShort(MessageType.PINGRESPONSE.value)
             .put(response.toByteArray())
             .array()
 
-        sendMessage(0, FrameType.BULK or EncryptionType.ENCRYPTED, payload)
+        sendMessage(0, FrameType.BULK.value or EncryptionType.ENCRYPTED.value, payload)
     }
 
 
