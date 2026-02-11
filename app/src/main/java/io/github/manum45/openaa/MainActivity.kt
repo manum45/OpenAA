@@ -51,15 +51,6 @@ class MainActivity : ComponentActivity() {
     var usbHandler: AutoUsbHandler = AutoUsbHandler()
     var receiverRegisterd = false
 
-    companion object {
-        init {
-            System.loadLibrary("AAServer")
-        }
-
-        external fun AAServerHello(): Int
-    }
-
-
     @OptIn(ExperimentalStdlibApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "Creating MainActivity")
@@ -87,9 +78,6 @@ class MainActivity : ComponentActivity() {
             filter.addAction(usbHandler.ACTION_USB_ACCESSORY_HANDSHAKE)
             this.registerReceiver(usbHandler, filter)
         }
-
-        Log.d(TAG, "AAServer says " + AAServerHello().toHexString())
-
     }
 
 
