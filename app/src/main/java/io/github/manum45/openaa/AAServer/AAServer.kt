@@ -44,6 +44,8 @@ data class Message(val channel: Byte, val flags: Byte, val content: ByteArray) {
     }
 }
 
+
+
 // These constants would typically be in their own files.
 object MessageType {
     const val VersionRequest: Short = 0x0001
@@ -89,54 +91,31 @@ class HeadUnitLink(
         initializeSslContext()
     }
 
-    private fun initializeSslContext() {
-        // Load certificate and private key from assets
-        val certInputStream = context.assets.open("ssl/android_auto.crt")
-        val keyInputStream = context.assets.open("ssl/android_auto.key")
-        
-        val certificate = loadCertificate(certInputStream)
-        val privateKey = loadPrivateKey(keyInputStream)
+    private fun <T : GeneratedMessageLite<T, *>> parseProto(bytes: ByteArray, offset: Int, parser: Parser<T>): T {
+        return parser.parseFrom(bytes, offset, bytes.size - offset)
+    }
 
-        // Set up KeyStore
-        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
-        keyStore.load(null, null)
-        keyStore.setKeyEntry("default", privateKey, "".toCharArray(), arrayOf(certificate))
 
-        // Set up KeyManagerFactory
-        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
-        kmf.init(keyStore, "".toCharArray())
-
-        // Set up a permissive TrustManager that trusts all certificates
-        val trustAllManager = object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+    /**
+     * Sends a message to the head unit.
+     */
+    fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) {
+        val dataToSend = if ((flags.toInt() and EncryptionType.ENCRYPTED.toInt()) != 0) {
+            encryptPayload(payload)
+        } else {
+            payload
         }
 
-        // Set up SSLContext
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(kmf.keyManagers, arrayOf(trustAllManager), null)
-
-        // Configure SSLEngine
-        sslEngine = sslContext.createSSLEngine()
-        sslEngine.useClientMode = false
-        sslEngine.enabledProtocols = arrayOf("TLSv1.2") // As per C++ code disabling TLSv1.3
-        
-        netReceiveBuffer.limit(0) // Initially no data to read
+        if (dataToSend != null) {
+            val header = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN)
+                .put(channel.toByte())
+                .put(flags)
+                .putShort(dataToSend.size.toShort())
+                .array()
+            transport.write(header + dataToSend)
+        }
     }
 
-    private fun loadCertificate(certInputStream: InputStream): X509Certificate {
-        val cf = CertificateFactory.getInstance("X.509")
-        return cf.generateCertificate(certInputStream) as X509Certificate
-    }
-
-    private fun loadPrivateKey(keyInputStream: InputStream): PrivateKey {
-        val pemReader = PemReader(InputStreamReader(keyInputStream))
-        val pemObject = pemReader.readPemObject()
-        val keySpec = PKCS8EncodedKeySpec(pemObject.content)
-        val kf = KeyFactory.getInstance("RSA")
-        return kf.generatePrivate(keySpec)
-    }
 
     /**
      * Processes raw data received from the transport layer.
@@ -171,28 +150,6 @@ class HeadUnitLink(
             }
         }
     }
-    
-    private fun decryptMessage(encryptedMsg: ByteArray): ByteArray? {
-        netReceiveBuffer.compact()
-        netReceiveBuffer.put(encryptedMsg)
-        netReceiveBuffer.flip()
-
-        val result = sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
-        return when (result.status) {
-            SSLEngineResult.Status.OK -> {
-                appReceiveBuffer.flip()
-                val decrypted = ByteArray(appReceiveBuffer.remaining())
-                appReceiveBuffer.get(decrypted)
-                appReceiveBuffer.compact()
-                decrypted
-            }
-            SSLEngineResult.Status.BUFFER_UNDERFLOW -> {
-                netReceiveBuffer.compact()
-                null // Need more data
-            }
-            else -> throw SSLException("SSL unwrap error: ${result.status}")
-        }
-    }
 
 
     private fun handleMessageContent(message: Message) {
@@ -209,6 +166,9 @@ class HeadUnitLink(
         }
     }
 
+
+
+
     private fun handleVersionRequest(message: Message) {
         Log.d(TAG, "AAServer: handling version request")
         if (message.content.size < 6) return
@@ -222,6 +182,21 @@ class HeadUnitLink(
             // Handle unsupported version
         }
     }
+
+    private fun sendVersionResponse(major: Short, minor: Short) {
+        /// TODO: use protobuffers
+        val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
+            .putShort(MessageType.VersionResponse)
+            .putShort(major)
+            .putShort(minor)
+            .putShort(0) // version match
+            .array()
+        //sendMessage(0, FrameType.BULK or EncryptionType.PLAIN, payload)
+        //flag 0x2 = LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
+        sendMessage(0, 0x2, payload)
+    }
+
+
     
     private fun handleSslHandshake(message: Message) {
         Log.d(TAG, "AAServer: handling ssl handshake")
@@ -268,22 +243,6 @@ class HeadUnitLink(
     }
 
 
-    private fun sendVersionResponse(major: Short, minor: Short) {
-        /// TODO: use protobuffers
-        val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
-            .putShort(MessageType.VersionResponse)
-            .putShort(major)
-            .putShort(minor)
-            .putShort(0) // version match
-            .array()
-        //sendMessage(0, FrameType.BULK or EncryptionType.PLAIN, payload)
-        //flag 0x2 = LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
-        sendMessage(0, 0x2, payload)
-    }
-    
-    private fun <T : GeneratedMessageLite<T, *>> parseProto(bytes: ByteArray, offset: Int, parser: Parser<T>): T {
-        return parser.parseFrom(bytes, offset, bytes.size - offset)
-    }
 
     private fun handlePingRequest(message: Message) {
         Log.d(TAG, "AAServer: handling ping request")
@@ -300,26 +259,63 @@ class HeadUnitLink(
         sendMessage(0, FrameType.BULK or EncryptionType.ENCRYPTED, payload)
     }
 
-    /**
-     * Sends a message to the head unit.
-     */
-    fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) {
-        val dataToSend = if ((flags.toInt() and EncryptionType.ENCRYPTED.toInt()) != 0) {
-            encryptPayload(payload)
-        } else {
-            payload
+
+
+
+
+
+
+    private fun initializeSslContext() {
+        // Load certificate and private key from assets
+        val certInputStream = context.assets.open("ssl/android_auto.crt")
+        val keyInputStream = context.assets.open("ssl/android_auto.key")
+
+        val certificate = loadCertificate(certInputStream)
+        val privateKey = loadPrivateKey(keyInputStream)
+
+        // Set up KeyStore
+        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+        keyStore.load(null, null)
+        keyStore.setKeyEntry("default", privateKey, "".toCharArray(), arrayOf(certificate))
+
+        // Set up KeyManagerFactory
+        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+        kmf.init(keyStore, "".toCharArray())
+
+        // Set up a permissive TrustManager that trusts all certificates
+        val trustAllManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
         }
-        
-        if (dataToSend != null) {
-            val header = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN)
-                .put(channel.toByte())
-                .put(flags)
-                .putShort(dataToSend.size.toShort())
-                .array()
-            transport.write(header + dataToSend)
-        }
+
+        // Set up SSLContext
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(kmf.keyManagers, arrayOf(trustAllManager), null)
+
+        // Configure SSLEngine
+        sslEngine = sslContext.createSSLEngine()
+        sslEngine.useClientMode = false
+        sslEngine.enabledProtocols = arrayOf("TLSv1.2") // As per C++ code disabling TLSv1.3
+
+        netReceiveBuffer.limit(0) // Initially no data to read
     }
-    
+
+    private fun loadCertificate(certInputStream: InputStream): X509Certificate {
+        val cf = CertificateFactory.getInstance("X.509")
+        return cf.generateCertificate(certInputStream) as X509Certificate
+    }
+
+    private fun loadPrivateKey(keyInputStream: InputStream): PrivateKey {
+        val pemReader = PemReader(InputStreamReader(keyInputStream))
+        val pemObject = pemReader.readPemObject()
+        val keySpec = PKCS8EncodedKeySpec(pemObject.content)
+        val kf = KeyFactory.getInstance("RSA")
+        return kf.generatePrivate(keySpec)
+    }
+
+
+
     private fun encryptPayload(payload: ByteArray): ByteArray? {
         appSendBuffer.clear()
         netSendBuffer.clear()
@@ -341,6 +337,28 @@ class HeadUnitLink(
         init {
             // Required for loading PEM private key
             java.security.Security.addProvider(BouncyCastleProvider())
+        }
+    }
+
+    private fun decryptMessage(encryptedMsg: ByteArray): ByteArray? {
+        netReceiveBuffer.compact()
+        netReceiveBuffer.put(encryptedMsg)
+        netReceiveBuffer.flip()
+
+        val result = sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
+        return when (result.status) {
+            SSLEngineResult.Status.OK -> {
+                appReceiveBuffer.flip()
+                val decrypted = ByteArray(appReceiveBuffer.remaining())
+                appReceiveBuffer.get(decrypted)
+                appReceiveBuffer.compact()
+                decrypted
+            }
+            SSLEngineResult.Status.BUFFER_UNDERFLOW -> {
+                netReceiveBuffer.compact()
+                null // Need more data
+            }
+            else -> throw SSLException("SSL unwrap error: ${result.status}")
         }
     }
 }

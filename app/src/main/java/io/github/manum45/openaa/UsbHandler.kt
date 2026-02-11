@@ -57,8 +57,7 @@ class Transport() : ITransport {
     }
 
     override fun write(data: ByteArray){
-        Log.d(TAG, "Transport write:")
-        Log.d(TAG, byteArrayToHex(data, data.size))
+        Log.d(TAG, "Transport write: " + byteArrayToHex(data, data.size))
         /// TODO: handle return value
         write(data, data.size)
     }
