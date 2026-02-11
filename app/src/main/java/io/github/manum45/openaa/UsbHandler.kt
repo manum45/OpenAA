@@ -3,26 +3,14 @@ package io.github.manum45.openaa
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
-import android.nfc.Tag
 import android.os.Build.VERSION.SDK_INT
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
 import android.os.Parcelable
 import android.util.Log
-import androidx.core.content.ContextCompat.getSystemService
-import androidx.core.content.ContextCompat.registerReceiver
-import io.github.manum45.openaa.AAServer.HeadUnitLink
-import io.github.manum45.openaa.AAServer.ITransport
-import kotlinx.coroutines.Runnable
-import java.io.BufferedReader
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStreamReader
-import java.io.IOException
+
 
 
 //https://stackoverflow.com/questions/73019160/the-getparcelableextra-method-is-deprecated
@@ -37,178 +25,15 @@ inline fun <reified T : Parcelable> Bundle.parcelable(key: String): T? = when {
 }
 
 
-fun byteArrayToHex(byteArray: ByteArray, numBytes: Int): String {
-    var msg :String = ""
-
-    for(i in 0..<numBytes)
-    {
-        msg += byteArray[i].toHexString() + " "
-    }
-    return msg
-}
-
-class Transport() : ITransport {
-    private var inputStream: FileInputStream? = null
-    private var outputStream: FileOutputStream? = null
-
-    fun registerStreams(inputStream: FileInputStream, outputStream: FileOutputStream) {
-        this.inputStream = inputStream
-        this.outputStream = outputStream
-    }
-
-    override fun write(data: ByteArray){
-        Log.d(TAG, "Transport write: " + byteArrayToHex(data, data.size))
-        /// TODO: handle return value
-        write(data, data.size)
-    }
-
-    fun write(data: ByteArray, length: Int): Boolean {
-        var success = true
-        try {
-            for(i in 0..<length){
-                outputStream!!.write(data, 0, length)
-            }
-        }
-        catch (e: IOException) {
-            /// TODO: handle more gracefully?
-            Log.d(TAG, "Connection closed")
-            success = false
-        }
-        return success
-    }
-
-    fun read(inBuffer: ByteArray): Int {
-        try {
-            var bytesRead = inputStream!!.read(inBuffer)
-            return bytesRead
-        }
-        catch (e: IOException) {
-            /// TODO: handle more gracefully?
-            Log.d(TAG, "Connection closed")
-            return -1
-        }
-    }
-}
 
 
-class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbManager, context: Context) : Runnable{
-
-    // https://developer.android.com/develop/connectivity/usb/accessory
-    private val maxBufLengthBytes: Int = 16384
-
-    private var fileDescriptor: ParcelFileDescriptor? = null
-    private var inputStream: FileInputStream? = null
-    private var outputStream: FileOutputStream? = null
-
-    private var inBuffer: ByteArray = ByteArray(maxBufLengthBytes)
-
-    private var stopComm: Boolean = false
-
-    private var transport: Transport = Transport();
-
-    private var headUnitLink: HeadUnitLink = HeadUnitLink(transport, context);
-
-
-
-
-    fun openAccessory() {
-        // https://developer.android.com/develop/connectivity/usb/accessory#communicating-a
-        Log.d(TAG, "open accessory")
-        fileDescriptor = usbManager.openAccessory(accessory)
-        fileDescriptor?.fileDescriptor?.also { fd ->
-            inputStream = FileInputStream(fd)
-            outputStream = FileOutputStream(fd)
-            transport.registerStreams(inputStream!!, outputStream!!)
-            val thread = Thread(null, this, "AccessoryCommunicatorThread")
-            thread.start()
-        }
-    }
-
-    fun closeAccessory() {
-        // https://developer.android.com/develop/connectivity/usb/accessory#terminating-a
-        if(fileDescriptor != null) {
-            Log.d(TAG, "closing accessory")
-            stopComm = true
-            fileDescriptor?.close()
-        }
-    }
-
-
-    //fun sendVersionResponse() {
-    //    Log.d(TAG, "Sending version response")
-//
-    //    /// send data according to expectation of handleVersionResponse in aasdk
-//
-    //    val length = 12
-//
-    //    var data: ByteArray = ByteArray(length)
-//
-    //    //LIBUSB_ENDPOINT_OUT | USB_TYPE_VENDOR with flipped endianness. just a guess
-    //    data[0] = 0
-    //    data[1] = 2
-//
-    //    // payload length. just a guess
-    //    data[2] = 0
-    //    data[3] = 8
-//
-    //    // VERSION_RESPONSE
-    //    data[4] = 0
-    //    data[5] = 2
-//
-    //    // major version
-    //    data[6] = 0
-    //    data[7] = 1
-//
-    //    // minor version
-    //    data[8] = 0
-    //    data[9] = 1
-//
-    //    // match
-    //    data[10] = 0
-    //    data[11] = 0
-//
-    //    write(data, length)
-    //}
-
-    @OptIn(ExperimentalStdlibApi::class)
-    override fun run() {
-        Log.d(TAG, "Starting communication with Accessory")
-
-        if(inputStream != null) {
-            while (!stopComm) {
-                var bytesRead = transport.read(inBuffer)
-
-                if(bytesRead > 0)
-                {
-                    var msg = byteArrayToHex(inBuffer, bytesRead)
-                    Log.d(TAG, "Received msg: $msg")
-
-
-                    headUnitLink.receiveData(inBuffer)
-
-
-                    // // check if this is sendVersionRequest from aasdk
-                    // if(inBuffer[3].toInt() == 6 && inBuffer[5].toInt() == 1) {
-                    //     sendVersionResponse()
-                    // }
-                    // else {
-                    //     Log.e(TAG, "ERROR: unhandled message received")
-                    // }
-                }
-                else if(bytesRead == -1)
-                {
-                    stopComm = true
-                }
-            }
-        }
-    }
-}
 
 
 class AutoUsbHandler : BroadcastReceiver() {
     val ACTION_USB_ACCESSORY_ATTACHED = UsbManager.ACTION_USB_ACCESSORY_ATTACHED
     val ACTION_USB_ACCESSORY_DETACHED = UsbManager.ACTION_USB_ACCESSORY_DETACHED
 
+    /// this is a systemapi, but apparently we can use it here. required
     val ACTION_USB_ACCESSORY_HANDSHAKE = "android.hardware.usb.action.USB_ACCESSORY_HANDSHAKE"
 
 

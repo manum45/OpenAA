@@ -11,6 +11,7 @@ import com.google.protobuf.GeneratedMessageLite
 import com.google.protobuf.Parser
 import io.github.manum45.openaa.AAServer.proto.PingRequestProto
 import io.github.manum45.openaa.AAServer.proto.PingResponseProto
+import io.github.manum45.openaa.IUsbStreamer
 import io.github.manum45.openaa.TAG
 import java.io.InputStream
 import java.io.InputStreamReader
@@ -27,12 +28,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
 import kotlin.experimental.or
 
-/**
- * An interface for the underlying transport mechanism to send data to the head unit.
- */
-interface ITransport {
-    fun write(data: ByteArray)
-}
+
 
 /**
  * Represents a message exchanged with the head unit.
@@ -71,8 +67,8 @@ object FrameType {
  * @param transport The transport layer to use for sending data.
  * @param context Android context to access assets.
  */
-class HeadUnitLink(
-    private val transport: ITransport,
+class MessageHandler(
+    private val transport: IUsbStreamer,
     private val context: Context
 ) {
     var onMessageReceived: ((Message) -> Unit)? = null
@@ -162,7 +158,10 @@ class HeadUnitLink(
             MessageType.VersionRequest -> handleVersionRequest(message)
             MessageType.SslHandshake -> handleSslHandshake(message)
             MessageType.PingRequest -> handlePingRequest(message)
-            else -> onMessageReceived?.invoke(message)
+            else -> {
+                Log.e(TAG, "Unhandled message type: $messageType")
+                onMessageReceived?.invoke(message)
+            }
         }
     }
 
