@@ -186,7 +186,8 @@ class MessageHandler(
         Log.d(TAG, "AAServer: handling ssl handshake")
         val handshakeData = message.content.copyOfRange(2, message.content.size)
 
-        val bytesToSend = ByteArray(4096)
+        /// TODO: improve buffer handling, reduce allocating and copying
+        val bytesToSend = ByteArray(17000)
 
         val returnValue = sslHandler.performSslHandshake(handshakeData, bytesToSend)
 
