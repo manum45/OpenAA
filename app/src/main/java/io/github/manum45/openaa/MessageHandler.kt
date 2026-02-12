@@ -186,20 +186,24 @@ class MessageHandler(
         Log.d(TAG, "AAServer: handling ssl handshake")
         val handshakeData = message.content.copyOfRange(2, message.content.size)
 
-        val bytesToSend = sslHandler.performSslHandshake(handshakeData)
+        val bytesToSend = ByteArray(4096)
 
-        if(bytesToSend != null)
-        {
-            val responsePayload = ByteBuffer.allocate(2 + bytesToSend.size)
+        val returnValue = sslHandler.performSslHandshake(handshakeData, bytesToSend)
+
+        if(returnValue == -2) {
+            Log.e(TAG, "AAServer: ssl handshake error")
+        } else if(returnValue == -1) {
+            Log.d(TAG, "AAServer: ssl handshake finished")
+        } else if(returnValue > 0) {
+            var numBytes = returnValue
+            val responsePayload = ByteBuffer.allocate(2 + numBytes)
                 .order(ByteOrder.BIG_ENDIAN)
                 .putShort(MessageType.SSLHANDSHAKE.value)
-                .put(bytesToSend)
+                .put(bytesToSend, 0, numBytes)
                 .array()
             sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
-        }
-        else
-        {
-            Log.e(TAG, "AAServer: ssl handshake failed")
+        } else {
+            Log.d(TAG, "AAServer: ssl handshake still ongoing")
         }
     }
 

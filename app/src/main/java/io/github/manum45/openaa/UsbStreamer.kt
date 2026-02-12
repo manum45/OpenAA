@@ -43,9 +43,7 @@ class UsbStreamer() : IUsbStreamer {
     fun write(data: ByteArray, length: Int): Boolean {
         var success = true
         try {
-            for(i in 0..<length){
-                outputStream!!.write(data, 0, length)
-            }
+            outputStream!!.write(data, 0, length)
         }
         catch (e: IOException) {
             /// TODO: handle more gracefully?

@@ -143,78 +143,102 @@ class SslHandler (private val context: Context) {
     }
 
 
+    private var handshakeStarted = false
+    // this function is supposed to be called until the return value is -1
+    // return value is the number of bytes provided by the sslengine to be sent
+    // if an error occurs, the return value is -2
+    fun performSslHandshake(handshakeData: ByteArray, sendData: ByteArray): Int {
+        //netReceiveBuffer.compact()
+        //netReceiveBuffer.put(handshakeData)
+        //netReceiveBuffer.flip()
 
+        //sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
 
-    fun performSslHandshake(handshakeData: ByteArray): ByteArray? {
+        //if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
+        //    /// according to Gemini, the appSendBuffer is ignored when wrap is called during
+        //    /// handshake, because ssl produces data for the handshake itself
+        //    val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
+        //    if (result.bytesProduced() > 0) {
+        //        netSendBuffer.flip()
+        //        val bytesToSend = ByteArray(netSendBuffer.remaining())
+        //        netSendBuffer.get(bytesToSend)
+        //        return bytesToSend
+        //    }
+        //    else {
+        //        Log.e(TAG, "Ssl handshake: Error: no data to be sent")
+        //        return null
+        //    }
+        //}
+        //else {
+        //    Log.e(TAG, "Ssl handshake: Error: wrong status")
+        //    return null
+        //}
+
+        var returnValue = 0
+
+        if (!handshakeStarted) {
+            sslEngine.beginHandshake()
+            handshakeStarted = true
+        }
+
         netReceiveBuffer.compact()
         netReceiveBuffer.put(handshakeData)
         netReceiveBuffer.flip()
 
-        sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
+        // sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
+
+        if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
+            Log.d(TAG, "Ssl handshake: Unwrap")
+            if (netReceiveBuffer.hasRemaining()) {
+                sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
+            } else {
+                netReceiveBuffer.compact()
+            }
+        }
+
+        if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
+            Log.d(TAG, "Ssl handshake: Need more data")
+        }
 
         if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
+            Log.d(TAG, "Ssl handshake: Wrap")
+            netSendBuffer.clear()
             /// according to Gemini, the appSendBuffer is ignored when wrap is called during
             /// handshake, because ssl produces data for the handshake itself
             val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
             if (result.bytesProduced() > 0) {
                 netSendBuffer.flip()
-                val bytesToSend = ByteArray(netSendBuffer.remaining())
-                netSendBuffer.get(bytesToSend)
-                return bytesToSend
-            }
-            else {
-                Log.e(TAG, "Ssl handshake: Error: no data to be sent")
-                return null
+                returnValue = netSendBuffer.remaining()
+                if(returnValue <= sendData.size) {
+                    netSendBuffer.get(sendData, 0, returnValue)
+                } else {
+                    Log.e(TAG, "Ssl handshake: Error: not enough space in sendData")
+                    returnValue = -2
+                }
             }
         }
-        else {
-            Log.e(TAG, "Ssl handshake: Error: wrong status")
-            return null
+
+        if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_TASK) {
+            // Log.d(TAG, "Ssl handshake: Task")
+            // sslEngine.delegatedTask?.run()
+            // returnValue = 0
+            Log.e(TAG, "Ssl handshake: Task not implemented")
+            returnValue = -2
         }
 
+        if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.FINISHED) {
+            Log.d(TAG, "Ssl handshake: Finished")
+            if(returnValue == 0) {
+                returnValue = -1
+            }
+        }
 
-        //sslEngine.beginHandshake()
-//
-        //netReceiveBuffer.compact()
-        //netReceiveBuffer.put(handshakeData)
-        //netReceiveBuffer.flip()
-//
-        //while (true) {
-        //    when (sslEngine.handshakeStatus) {
-        //        SSLEngineResult.HandshakeStatus.NEED_UNWRAP -> {
-        //            Log.d(TAG, "Ssl handshake: Unwrap")
-        //            if (netReceiveBuffer.hasRemaining()) {
-        //                sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
-        //            } else {
-        //                netReceiveBuffer.compact()
-        //                Log.d(TAG, "Error: not enough data, current implementation can't handle partial inpu")
-        //                return null // Need more data from peer
-        //            }
-        //        }
-        //        SSLEngineResult.HandshakeStatus.NEED_WRAP -> {
-        //            Log.d(TAG, "Ssl handshake: Wrap")
-        //            netSendBuffer.clear()
-        //            val result = sslEngine.wrap(appSendBuffer, netSendBuffer)
-        //            if (result.bytesProduced() > 0) {
-        //                netSendBuffer.flip()
-        //                val bytesToSend = ByteArray(netSendBuffer.remaining())
-        //                netSendBuffer.get(bytesToSend)
-//
-        //                return bytesToSend
-        //            }
-        //        }
-        //        SSLEngineResult.HandshakeStatus.NEED_TASK -> {
-        //            Log.d(TAG, "Ssl handshake: Task")
-        //            sslEngine.delegatedTask?.run()
-        //        }
-        //        SSLEngineResult.HandshakeStatus.FINISHED -> {
-        //            Log.d(TAG, "Ssl handshake: Finished")
-        //        }
-        //        SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING -> {
-        //            Log.d(TAG, "Ssl handshake: Not Handshaking")
-        //            return null
-        //        }
-        //    }
+        if(sslEngine.handshakeStatus == SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
+            Log.e(TAG, "Ssl handshake: Not Handshaking (unexpected sequence)")
+            returnValue = -2
+        }
+
+        return returnValue
     }
 
 }
