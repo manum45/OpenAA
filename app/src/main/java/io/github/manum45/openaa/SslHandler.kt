@@ -44,6 +44,9 @@ class SslHandler (private val context: Context) {
 
     private lateinit var sslEngine: SSLEngine
 
+    fun getSslEngineStatus() : SSLEngineResult.HandshakeStatus {
+        return sslEngine.handshakeStatus;
+    }
 
     fun initializeSslContext() {
         // Load certificate and private key from assets
@@ -121,9 +124,12 @@ class SslHandler (private val context: Context) {
     }
 
     fun decryptMessage(encryptedMsg: ByteArray): ByteArray? {
+        /// TODO: should we clear() here instead of compact? Can there be partial messages here?
         netReceiveBuffer.compact()
         netReceiveBuffer.put(encryptedMsg)
         netReceiveBuffer.flip()
+
+        appReceiveBuffer.clear()
 
         val result = sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
         return when (result.status) {
@@ -231,6 +237,7 @@ class SslHandler (private val context: Context) {
                     Log.d(TAG, "SslHandshake: NEED_TASK. Running delegated task.")
                     sslEngine.delegatedTask?.run()
                     // The status will change after the task is run. The loop continues.
+                    /// TODO: should we not block here?
                 }
 
                 SSLEngineResult.HandshakeStatus.FINISHED -> {

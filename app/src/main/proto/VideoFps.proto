@@ -4,7 +4,12 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+message VideoFps
 {
-    required int64 timestamp = 1;
+    enum Enum
+    {
+        None = 0;
+        F30 = 1;
+        F60 = 2;
+    }
 }

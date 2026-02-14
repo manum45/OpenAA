@@ -44,7 +44,11 @@ enum class MessageType(val value: Short) {
     NAVIGATIONFOCUSRESPONSE(0x0e),
     VOICESESSIONREQUEST(0x11),
     AUDIOFOCUSREQUEST(0x12),
-    AUDIOFOCUSRESPONSE(0x13),
+    AUDIOFOCUSRESPONSE(0x13);
+
+    companion object {
+        fun fromShort(value: Short) = MessageType.entries.first { it.value == value }
+    }
 };
 
 enum class MediaMessageType(val value: Int) {

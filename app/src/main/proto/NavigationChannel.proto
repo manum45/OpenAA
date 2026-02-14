@@ -4,7 +4,8 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+message NavigationChannel
 {
-    required int64 timestamp = 1;
+    required uint32 minimum_interval_ms = 1;
+    required uint32 type = 2;
 }

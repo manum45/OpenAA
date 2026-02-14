@@ -1,10 +1,11 @@
-syntax = "proto2";
+// Distributed under GPLv3 only as specified in repository's root LICENSE file
 
-package io.github.manum45.openaa.AAServer.proto;
+syntax="proto2";
 
-option java_package = "io.github.manum45.openaa.AAServer.proto";
-option java_outer_classname = "PingRequestProto";
+package tag.aas;
 
-message PingRequest {
-  required int64 timestamp = 1;
+message PingRequest
+{
+    required int64 timestamp = 1;
+    optional int32 unknown_1 = 2;
 }

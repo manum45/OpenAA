@@ -4,7 +4,7 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+message ChannelOpenResponse
 {
-    required int64 timestamp = 1;
+    required int32 status = 1;
 }

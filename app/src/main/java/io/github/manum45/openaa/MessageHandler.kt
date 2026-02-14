@@ -9,11 +9,14 @@
 package io.github.manum45.openaa
 
 import android.content.Context
+import android.net.nsd.DiscoveryRequest
+import android.os.Build
 import android.util.Log
 import com.google.protobuf.GeneratedMessageLite
 import com.google.protobuf.Parser
-import io.github.manum45.openaa.AAServer.proto.PingRequestProto
-import io.github.manum45.openaa.AAServer.proto.PingResponseProto
+import tag.aas.PingRequestOuterClass.PingRequest
+import tag.aas.PingResponseOuterClass.PingResponse
+import tag.aas.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.ByteBuffer
@@ -64,8 +67,6 @@ class MessageHandler(
 
 
 
-
-
     init {
         sslHandler.initializeSslContext()
     }
@@ -78,8 +79,24 @@ class MessageHandler(
     /**
      * Sends a message to the head unit.
      */
+    fun sendProtoMessage(channel: Int, flags: Byte, messageType: MessageType, message: GeneratedMessageLite<*, *>) {
+        val payload = ByteBuffer.allocate(2 + message.serializedSize)
+            .order(ByteOrder.BIG_ENDIAN)
+            .putShort(messageType.value)
+            .put(message.toByteArray())
+            .array()
+
+        sendMessage(channel, flags, payload)
+    }
+
     fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) {
+        /// TODO: pass message type also to this function, create buffer here
+        /// Caution: will need to encrypt payload including message type it seems
+        /// How to achieve this without having even more buffer copying
+
         val dataToSend = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
+            /// From AaCommunicator::prepareMessage it looks like channel, flags and length is not encrypted,
+            /// but message type and data is (both are part of payload already here)
             sslHandler.encryptPayload(payload)
         } else {
             payload
@@ -133,25 +150,44 @@ class MessageHandler(
     }
 
 
+    /**
+     * The usual sequence seems to be this:
+     * - Headunit sends version request, Server (Phone) sends version response
+     * - Headunit initiates SSL handshake, some back and forth
+     * - Headunit sends AUTHCOMPLETE
+     * - Server sends SERVICEDISCOVERYREQUEST
+     * - Server sends SERVICEDISCOVERYRESPONSE
+     * - TBD
+     *
+     */
     private fun handleMessage(message: Message) {
         if (message.content.size < 2) return
+
+        /// corresponds to AaCommunicator::handleMessageContent
 
 
         /// Log.d(TAG, "Handling message content: " + byteArrayToHex(message.content, message.content.size))
 
-        val messageType = ByteBuffer.wrap(message.content, 0, 2)
-            .order(ByteOrder.BIG_ENDIAN).short
+        val messageType = MessageType.fromShort(ByteBuffer.wrap(message.content, 0, 2)
+            .order(ByteOrder.BIG_ENDIAN).short)
+
+        Log.d(TAG, "MessageHandler: received message type: ${messageType.name}")
 
         when (messageType) {
-            MessageType.VERSIONREQUEST.value -> handleVersionRequest(message)
-            MessageType.SSLHANDSHAKE.value -> handleSslHandshake(message)
-            MessageType.PINGREQUEST.value -> handlePingRequest(message)
+            MessageType.VERSIONREQUEST -> handleVersionRequest(message)
+            MessageType.SSLHANDSHAKE -> handleSslHandshake(message)
+            MessageType.PINGREQUEST -> handlePingRequest(message)
+            MessageType.AUTHCOMPLETE ->sendServiceDiscoveryRequest()
             else -> {
                 Log.e(TAG, "Unhandled message type: $messageType")
                 onMessageReceived?.invoke(message)
             }
         }
     }
+
+
+
+
 
 
 
@@ -171,7 +207,6 @@ class MessageHandler(
     }
 
     private fun sendVersionResponse(major: Short, minor: Short) {
-        /// TODO: use protobuffers
         val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
             .putShort(MessageType.VERSIONRESPONSE.value)
             .putShort(major)
@@ -194,7 +229,11 @@ class MessageHandler(
         if(returnValue == -2) {
             Log.e(TAG, "AAServer: ssl handshake error")
         } else if(returnValue == -1) {
+            /// TODO: this state will not be reached if performSslHandshake still produces data
+            ///       in the last iteration. How to handle this better? Just be stuck in Ssl
+            ///       handshake if headunit does not provide more data?
             Log.d(TAG, "AAServer: ssl handshake finished")
+            Log.d(TAG, "Final sslEngine State: ${sslHandler.getSslEngineStatus()}")
         } else if(returnValue > 0) {
             var numBytes = returnValue
             val responsePayload = ByteBuffer.allocate(2 + numBytes)
@@ -203,6 +242,7 @@ class MessageHandler(
                 .put(bytesToSend, 0, numBytes)
                 .array()
             sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
+            Log.d(TAG, "SslEngine State: ${sslHandler.getSslEngineStatus()}")
         } else {
             Log.d(TAG, "AAServer: ssl handshake still ongoing")
         }
@@ -210,17 +250,35 @@ class MessageHandler(
 
     private fun handlePingRequest(message: Message) {
         Log.d(TAG, "AAServer: handling ping request")
-        val request = parseProto(message.content, 2, PingRequestProto.PingRequest.parser())
-        val response = PingResponseProto.PingResponse.newBuilder().setTimestamp(request.timestamp).build()
+        val request = parseProto(message.content, 2, PingRequest.parser())
+        val response = PingResponse.newBuilder().setTimestamp(request.timestamp).build()
 
-        /// TODO: use protobuffers
-        val payload = ByteBuffer.allocate(2 + response.serializedSize)
-            .order(ByteOrder.BIG_ENDIAN)
-            .putShort(MessageType.PINGRESPONSE.value)
-            .put(response.toByteArray())
-            .array()
+        sendProtoMessage(
+            0,
+            FrameType.BULK.value or EncryptionType.ENCRYPTED.value,
+            MessageType.PINGRESPONSE,
+            response
+        )
+    }
 
-        sendMessage(0, FrameType.BULK.value or EncryptionType.ENCRYPTED.value, payload)
+
+    private fun sendServiceDiscoveryRequest() {
+        Log.d(TAG, "AAServer: sending service discovery request")
+        val request = ServiceDiscoveryRequest.newBuilder()
+            .setManufacturer(Build.MANUFACTURER)
+            .setModel(Build.MODEL)
+            .build()
+
+        /// TODO: this should actually be encrypted, but encryption does not seem to work
+        /// payload in openauto is appears as all 0
+        /// not sure if OEM headunits will accept this without encryption. seems to work
+        /// for OpenAuto
+        sendProtoMessage(
+            0,
+            EncryptionType.PLAIN.value or FrameType.BULK.value,
+            MessageType.SERVICEDISCOVERYREQUEST,
+            request
+        )
     }
 
 }

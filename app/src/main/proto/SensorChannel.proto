@@ -2,9 +2,11 @@
 
 syntax="proto2";
 
+import "Sensor.proto";
+
 package tag.aas;
 
-message PingResponse
+message SensorChannel
 {
-    required int64 timestamp = 1;
+    repeated Sensor sensors = 1;
 }

@@ -4,7 +4,11 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+enum TouchAction
 {
-    required int64 timestamp = 1;
+    Press = 0;
+    Release = 1;
+    Drag = 2;
+    Down = 5;
+    Up = 6;
 }

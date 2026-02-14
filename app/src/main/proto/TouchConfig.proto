@@ -4,7 +4,8 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+message TouchConfig
 {
-    required int64 timestamp = 1;
+    required uint32 width = 1;
+    required uint32 height = 2;
 }

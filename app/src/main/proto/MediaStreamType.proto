@@ -4,7 +4,12 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+message MediaStreamType
 {
-    required int64 timestamp = 1;
+    enum Enum
+    {
+        None = 0;
+        Audio = 1;
+        Video = 3;
+    }
 }

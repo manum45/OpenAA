@@ -4,7 +4,9 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+import "Channel.proto";
+
+message ServiceDiscoveryResponse
 {
-    required int64 timestamp = 1;
+    repeated Channel channels = 1;
 }

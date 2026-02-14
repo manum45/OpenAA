@@ -4,7 +4,8 @@ syntax="proto2";
 
 package tag.aas;
 
-message PingResponse
+message ServiceDiscoveryRequest
 {
-    required int64 timestamp = 1;
+    required string model = 4;
+    required string manufacturer = 5;
 }
