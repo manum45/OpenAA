@@ -30,6 +30,7 @@ import java.security.spec.PKCS8EncodedKeySpec
 import javax.net.ssl.*
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
+import tag.aas.ServiceDiscoveryResponseOuterClass
 import java.security.Security
 import kotlin.experimental.or
 
@@ -178,6 +179,7 @@ class MessageHandler(
             MessageType.SSLHANDSHAKE -> handleSslHandshake(message)
             MessageType.PINGREQUEST -> handlePingRequest(message)
             MessageType.AUTHCOMPLETE ->sendServiceDiscoveryRequest()
+            MessageType.SERVICEDISCOVERYRESPONSE -> handleServiceDiscoveryResponse(message)
             else -> {
                 Log.e(TAG, "Unhandled message type: $messageType")
                 onMessageReceived?.invoke(message)
@@ -224,25 +226,26 @@ class MessageHandler(
         /// TODO: improve buffer handling, reduce allocating and copying
         val bytesToSend = ByteArray(17000)
 
-        val returnValue = sslHandler.performSslHandshake(handshakeData, bytesToSend)
+        val (returnValue, numSendBytes) = sslHandler.performSslHandshake(handshakeData, bytesToSend)
 
-        if(returnValue == -2) {
+        if(returnValue == -1) {
             Log.e(TAG, "AAServer: ssl handshake error")
-        } else if(returnValue == -1) {
-            /// TODO: this state will not be reached if performSslHandshake still produces data
-            ///       in the last iteration. How to handle this better? Just be stuck in Ssl
-            ///       handshake if headunit does not provide more data?
+        } else if(returnValue == 0) {
+            Log.d(TAG, "AAServer: ssl handshake still ongoing")
+        } else if(returnValue == 1) {
             Log.d(TAG, "AAServer: ssl handshake finished")
             Log.d(TAG, "Final sslEngine State: ${sslHandler.getSslEngineStatus()}")
-        } else if(returnValue > 0) {
-            var numBytes = returnValue
-            val responsePayload = ByteBuffer.allocate(2 + numBytes)
+        } else {
+            Log.e(TAG, "AAServer: ssl handshake invalid return value: $returnValue")
+        }
+
+        if(numSendBytes > 0) {
+            val responsePayload = ByteBuffer.allocate(2 + numSendBytes)
                 .order(ByteOrder.BIG_ENDIAN)
                 .putShort(MessageType.SSLHANDSHAKE.value)
-                .put(bytesToSend, 0, numBytes)
+                .put(bytesToSend, 0, numSendBytes)
                 .array()
             sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
-            Log.d(TAG, "SslEngine State: ${sslHandler.getSslEngineStatus()}")
         } else {
             Log.d(TAG, "AAServer: ssl handshake still ongoing")
         }
@@ -275,10 +278,16 @@ class MessageHandler(
         /// for OpenAuto
         sendProtoMessage(
             0,
-            EncryptionType.PLAIN.value or FrameType.BULK.value,
+            EncryptionType.ENCRYPTED.value or FrameType.BULK.value,
             MessageType.SERVICEDISCOVERYREQUEST,
             request
         )
+    }
+
+    private fun handleServiceDiscoveryResponse(message: Message) {
+        Log.d(TAG, "AAServer: handling service discovery response")
+        val response = parseProto(message.content, 2, ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse.parser())
+        Log.d(TAG, "AAServer: service discovery response: $response")
     }
 
 }
