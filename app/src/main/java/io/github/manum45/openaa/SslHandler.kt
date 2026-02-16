@@ -140,8 +140,10 @@ class SslHandler (private val context: Context) {
         val result = sslEngine.unwrap(netReceiveBuffer, appReceiveBuffer)
         return when (result.status) {
             SSLEngineResult.Status.OK -> {
+                appReceiveBuffer.flip()
                 val decrypted = ByteArray(appReceiveBuffer.remaining())
                 appReceiveBuffer.get(decrypted)
+                appReceiveBuffer.compact()
                 decrypted
             }
             SSLEngineResult.Status.BUFFER_UNDERFLOW -> {
