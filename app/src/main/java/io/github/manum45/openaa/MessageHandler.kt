@@ -165,12 +165,18 @@ class MessageHandler(
         if (message.content.size < 2) return
 
         /// corresponds to AaCommunicator::handleMessageContent
+        val messageType: MessageType?
 
 
         /// Log.d(TAG, "Handling message content: " + byteArrayToHex(message.content, message.content.size))
+        val msgTypeRaw = ByteBuffer.wrap(message.content, 0, 2).order(ByteOrder.BIG_ENDIAN).short
+        try {
+            messageType = MessageType.fromShort(msgTypeRaw)
+        } catch (e: NoSuchElementException) {
+            Log.e(TAG, "Invalid message type: $msgTypeRaw")
+            return
+        }
 
-        val messageType = MessageType.fromShort(ByteBuffer.wrap(message.content, 0, 2)
-            .order(ByteOrder.BIG_ENDIAN).short)
 
         Log.d(TAG, "MessageHandler: received message type: ${messageType.name}")
 
