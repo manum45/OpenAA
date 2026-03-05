@@ -30,8 +30,11 @@ import java.security.spec.PKCS8EncodedKeySpec
 import javax.net.ssl.*
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
+import tag.aas.MediaStreamTypeKt
+import tag.aas.MediaStreamTypeOuterClass
 import tag.aas.ServiceDiscoveryResponseOuterClass
 import java.security.Security
+import java.util.Dictionary
 import kotlin.experimental.or
 
 
@@ -66,7 +69,7 @@ class MessageHandler(
 
     private var sslHandler: SslHandler = SslHandler(context)
 
-
+    private var channelHandlers: MutableMap<Int, IChannelHandler> = mutableMapOf()
 
     init {
         sslHandler.initializeSslContext()
@@ -178,17 +181,26 @@ class MessageHandler(
         }
 
 
-        Log.d(TAG, "MessageHandler: received message type: ${messageType.name}")
+        Log.d(TAG, "MessageHandler: received message, type: ${messageType.name}, channel: ${message.channel}")
 
-        when (messageType) {
-            MessageType.VERSIONREQUEST -> handleVersionRequest(message)
-            MessageType.SSLHANDSHAKE -> handleSslHandshake(message)
-            MessageType.PINGREQUEST -> handlePingRequest(message)
-            MessageType.AUTHCOMPLETE ->sendServiceDiscoveryRequest()
-            MessageType.SERVICEDISCOVERYRESPONSE -> handleServiceDiscoveryResponse(message)
-            else -> {
-                Log.e(TAG, "Unhandled message type: $messageType")
-                onMessageReceived?.invoke(message)
+        if (message.channel != 0.toByte()){
+            if(channelHandlers.contains(message.channel.toInt())) {
+                channelHandlers[message.channel.toInt()]?.handleMessage(message)
+            } else {
+                Log.e(TAG,"MessageHandler: received channel message for non-initialized channel handler: ${message.channel}")
+            }
+        }
+        else {
+            when (messageType) {
+                MessageType.VERSIONREQUEST -> handleVersionRequest(message)
+                MessageType.SSLHANDSHAKE -> handleSslHandshake(message)
+                MessageType.PINGREQUEST -> handlePingRequest(message)
+                MessageType.AUTHCOMPLETE -> sendServiceDiscoveryRequest()
+                MessageType.SERVICEDISCOVERYRESPONSE -> handleServiceDiscoveryResponse(message)
+                else -> {
+                    Log.e(TAG, "Unhandled message type: $messageType")
+                    onMessageReceived?.invoke(message)
+                }
             }
         }
     }
@@ -278,10 +290,6 @@ class MessageHandler(
             .setModel(Build.MODEL)
             .build()
 
-        /// TODO: this should actually be encrypted, but encryption does not seem to work
-        /// payload in openauto is appears as all 0
-        /// not sure if OEM headunits will accept this without encryption. seems to work
-        /// for OpenAuto
         sendProtoMessage(
             0,
             EncryptionType.ENCRYPTED.value or FrameType.BULK.value,
@@ -292,8 +300,56 @@ class MessageHandler(
 
     private fun handleServiceDiscoveryResponse(message: Message) {
         Log.d(TAG, "AAServer: handling service discovery response")
-        val response = parseProto(message.content, 2, ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse.parser())
-        Log.d(TAG, "AAServer: service discovery response: $response")
-    }
+        val response: ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse = parseProto(message.content, 2, ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse.parser())
+        Log.d(TAG, "AAServer: service discovery response: ${response.channelsCount} channels")
 
+        for (channel in response.channelsList) {
+            var handled = false
+            if (channel.hasMediaChannel()) {
+                when (channel.mediaChannel.mediaType) {
+                    MediaStreamTypeOuterClass.MediaStreamType.Enum.Video -> {
+                        Log.d(TAG, "AAServer: found video channel: id ${channel.channelId}")
+                    }
+                    MediaStreamTypeOuterClass.MediaStreamType.Enum.Audio -> {
+                        Log.d(TAG, "AAServer: found audio channel: id ${channel.channelId}")
+                        var handler = AudioChannelHandler(channel)
+                        channelHandlers[channel.channelId] = handler
+                        handled = true
+                    }
+                    else -> {
+                        Log.d(TAG, "AAServer: found unknown media channel: id ${channel.channelId}")
+                    }
+                }
+            }
+            else if(channel.hasMediaInputChannel()) {
+                if (channel.mediaInputChannel.hasAudioConfig()) {
+                    Log.d(TAG, "AAServer: found audio input channel: id ${channel.channelId}")
+                } else {
+                    Log.d(TAG, "AAServer: found unknown media input channel: id ${channel.channelId}")
+                }
+            } else if (channel.hasSensorChannel()) {
+                var sensorsString: String = ""
+                for (sensor in channel.sensorChannel.sensorsList) {
+                    sensorsString += "${sensor.type.name}, "
+                }
+                Log.d(TAG, "AAServer: found sensor channel: id ${channel.channelId}, sensors: $sensorsString")
+            } else if (channel.hasInputChannel()) {
+                var buttonsStr: String = ""
+                for (button in channel.inputChannel.availableButtonsList) {
+                    buttonsStr += "${button.name}, "
+                }
+                var screenConfigStr: String = "None"
+                if(channel.inputChannel.hasScreenConfig()) {
+                    screenConfigStr = "width: ${channel.inputChannel.screenConfig.width}, height: ${channel.inputChannel.screenConfig.height}"
+                }
+                Log.d(TAG, "AAServer: found input channel: id ${channel.channelId}, buttons: $buttonsStr, screen config: $screenConfigStr")
+            } else {
+                Log.d(TAG, "AAServer: found unknown channel: id ${channel.channelId}")
+            }
+
+            if(!handled) {
+                Log.w(TAG, "AAServer: channel was not handled: ${channel.channelId}")
+            }
+        }
+    }
 }
