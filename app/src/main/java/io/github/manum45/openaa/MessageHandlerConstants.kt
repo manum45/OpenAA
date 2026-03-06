@@ -24,9 +24,9 @@ enum class FrameType(val value: Byte){
     BULK(FIRST.value or LAST.value),
 };
 
-enum class MessageTypeFlags(val value: Int) {
+enum class MessageTypeFlags(val value: Byte) {
     CONTROL(0),
-    SPECIFIC(1 shl 2),
+    SPECIFIC((1 shl 2).toByte()),
 };
 
 enum class MessageType(val value: Short) {

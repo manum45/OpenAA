@@ -75,7 +75,7 @@ class MessageHandler(
         sslHandler.initializeSslContext()
     }
 
-    private fun <T : GeneratedMessageLite<T, *>> parseProto(bytes: ByteArray, offset: Int, parser: Parser<T>): T {
+    fun <T : GeneratedMessageLite<T, *>> parseProto(bytes: ByteArray, offset: Int, parser: Parser<T>): T {
         return parser.parseFrom(bytes, offset, bytes.size - offset)
     }
 
@@ -185,7 +185,7 @@ class MessageHandler(
 
         if (message.channel != 0.toByte()){
             if(channelHandlers.contains(message.channel.toInt())) {
-                channelHandlers[message.channel.toInt()]?.handleMessage(message)
+                channelHandlers[message.channel.toInt()]?.handleMessage(message, messageType)
             } else {
                 Log.e(TAG,"MessageHandler: received channel message for non-initialized channel handler: ${message.channel}")
             }
@@ -312,7 +312,7 @@ class MessageHandler(
                     }
                     MediaStreamTypeOuterClass.MediaStreamType.Enum.Audio -> {
                         Log.d(TAG, "AAServer: found audio channel: id ${channel.channelId}")
-                        var handler = AudioChannelHandler(channel)
+                        var handler = AudioChannelHandler(channel, this)
                         channelHandlers[channel.channelId] = handler
                         handled = true
                     }
