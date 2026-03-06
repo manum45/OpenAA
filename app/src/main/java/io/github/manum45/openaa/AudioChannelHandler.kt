@@ -7,9 +7,13 @@ import f1x.aasdk.proto.messages.ChannelOpenRequestMessage.ChannelOpenRequest
 import f1x.aasdk.proto.messages.ChannelOpenResponseMessage.ChannelOpenResponse
 import f1x.aasdk.proto.data.ChannelDescriptorData.ChannelDescriptor
 import f1x.aasdk.proto.enums.StatusEnum
+import f1x.aasdk.proto.ids.AVChannelMessageIdsEnum
+import f1x.aasdk.proto.ids.ControlMessageIdsEnum
+import f1x.aasdk.proto.messages.AVChannelSetupRequestMessage
 
 class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: MessageHandler): IChannelHandler {
 
+    var channelId = channel.channelId
     var audioConfigs: List<AudioConfig> = channel.avChannel.audioConfigsList
     var open: Boolean = false
 
@@ -21,12 +25,12 @@ class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: Messag
             .build()
         Log.d(TAG, "AudioChannelHandler: Sending channel open request for channel ${channel.channelId}")
         messageHandler.sendProtoMessage(
-            channel.channelId,
+            channelId,
             FrameType.BULK.value or EncryptionType.ENCRYPTED.value or MessageTypeFlags.SPECIFIC.value,
-            MessageType.CHANNELOPENREQUEST,
+            ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_REQUEST.number.toShort(),
             request)
     }
-    override fun handleMessage(message: Message, messageType: MessageType) {
+    override fun handleMessage(message: Message, messageType: ControlMessageIdsEnum.ControlMessage.Enum) {
 
         Log.e(
             TAG,
@@ -34,7 +38,7 @@ class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: Messag
         )
 
         when (messageType) {
-            MessageType.CHANNELOPENRESPONSE -> {
+            ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_RESPONSE -> {
                 var response = messageHandler.parseProto(
                     message.content,
                     2,
@@ -44,6 +48,16 @@ class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: Messag
                 if(response.status == StatusEnum.Status.Enum.OK){
                     Log.d(TAG, "AudioChannelHandler: Channel opened successfully")
                     open = true
+
+                    val request = AVChannelSetupRequestMessage.AVChannelSetupRequest.newBuilder()
+                        .setConfigIndex(0)
+                        .build()
+                    messageHandler.sendProtoMessage(
+                        channelId,
+                        FrameType.BULK.value or EncryptionType.ENCRYPTED.value or MessageTypeFlags.SPECIFIC.value,
+                        AVChannelMessageIdsEnum.AVChannelMessage.Enum.SETUP_REQUEST.number.toShort(),
+                        request
+                    )
                 } else {
                     Log.e(TAG, "AudioChannelHandler: Channel open failed with status ${response.status}")
                     open = false

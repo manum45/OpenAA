@@ -49,6 +49,7 @@ class SslHandler (private val context: Context) {
     }
 
     fun initializeSslContext() {
+        /// TODO: this is not secure. can we use device specific key and certificate?
         // Load certificate and private key from assets
         val certInputStream = context.assets.open("ssl/android_auto.crt")
         val keyInputStream = context.assets.open("ssl/android_auto.key")

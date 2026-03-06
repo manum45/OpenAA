@@ -32,6 +32,7 @@ import javax.net.ssl.*
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
 import f1x.aasdk.proto.enums.AVStreamTypeEnum.AVStreamType
+import f1x.aasdk.proto.ids.ControlMessageIdsEnum
 import java.security.Security
 import java.util.Dictionary
 import kotlin.experimental.or
@@ -82,10 +83,10 @@ class MessageHandler(
     /**
      * Sends a message to the head unit.
      */
-    fun sendProtoMessage(channel: Int, flags: Byte, messageType: MessageType, message: GeneratedMessageLite<*, *>) {
+    fun sendProtoMessage(channel: Int, flags: Byte, messageType: Short, message: GeneratedMessageLite<*, *>) {
         val payload = ByteBuffer.allocate(2 + message.serializedSize)
             .order(ByteOrder.BIG_ENDIAN)
-            .putShort(messageType.value)
+            .putShort(messageType)
             .put(message.toByteArray())
             .array()
 
@@ -96,7 +97,8 @@ class MessageHandler(
         /// TODO: pass message type also to this function, create buffer here
         /// Caution: will need to encrypt payload including message type it seems
         /// How to achieve this without having even more buffer copying
-        Log.d(TAG, "MessageHandler: sending message, channel: $channel, flags: $flags, payload: ${byteArrayToHex(payload, payload.size)}")
+
+        /// Log.d(TAG, "MessageHandler: sending message, channel: $channel, flags: $flags, payload: ${byteArrayToHex(payload, payload.size)}")
 
         val dataToSend = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
             /// From AaCommunicator::prepareMessage it looks like channel, flags and length is not encrypted,
@@ -168,13 +170,13 @@ class MessageHandler(
         if (message.content.size < 2) return
 
         /// corresponds to AaCommunicator::handleMessageContent
-        val messageType: MessageType?
+        val messageType: ControlMessageIdsEnum.ControlMessage.Enum?
 
 
         /// Log.d(TAG, "Handling message content: " + byteArrayToHex(message.content, message.content.size))
         val msgTypeRaw = ByteBuffer.wrap(message.content, 0, 2).order(ByteOrder.BIG_ENDIAN).short
         try {
-            messageType = MessageType.fromShort(msgTypeRaw)
+            messageType = ControlMessageIdsEnum.ControlMessage.Enum.forNumber(msgTypeRaw.toInt())
         } catch (e: NoSuchElementException) {
             Log.e(TAG, "Invalid message type: $msgTypeRaw")
             return
@@ -192,11 +194,11 @@ class MessageHandler(
         }
         else {
             when (messageType) {
-                MessageType.VERSIONREQUEST -> handleVersionRequest(message)
-                MessageType.SSLHANDSHAKE -> handleSslHandshake(message)
-                MessageType.PINGREQUEST -> handlePingRequest(message)
-                MessageType.AUTHCOMPLETE -> sendServiceDiscoveryRequest()
-                MessageType.SERVICEDISCOVERYRESPONSE -> handleServiceDiscoveryResponse(message)
+                ControlMessageIdsEnum.ControlMessage.Enum.VERSION_REQUEST -> handleVersionRequest(message)
+                ControlMessageIdsEnum.ControlMessage.Enum.SSL_HANDSHAKE -> handleSslHandshake(message)
+                ControlMessageIdsEnum.ControlMessage.Enum.PING_REQUEST -> handlePingRequest(message)
+                ControlMessageIdsEnum.ControlMessage.Enum.AUTH_COMPLETE -> sendServiceDiscoveryRequest()
+                ControlMessageIdsEnum.ControlMessage.Enum.SERVICE_DISCOVERY_RESPONSE -> handleServiceDiscoveryResponse(message)
                 else -> {
                     Log.e(TAG, "Unhandled message type: $messageType")
                     onMessageReceived?.invoke(message)
@@ -228,7 +230,7 @@ class MessageHandler(
 
     private fun sendVersionResponse(major: Short, minor: Short) {
         val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
-            .putShort(MessageType.VERSIONRESPONSE.value)
+            .putShort(ControlMessageIdsEnum.ControlMessage.Enum.VERSION_RESPONSE.number.toShort())
             .putShort(major)
             .putShort(minor)
             .putShort(0) // version match
@@ -260,7 +262,7 @@ class MessageHandler(
         if(numSendBytes > 0) {
             val responsePayload = ByteBuffer.allocate(2 + numSendBytes)
                 .order(ByteOrder.BIG_ENDIAN)
-                .putShort(MessageType.SSLHANDSHAKE.value)
+                .putShort(ControlMessageIdsEnum.ControlMessage.Enum.SSL_HANDSHAKE.number.toShort())
                 .put(bytesToSend, 0, numSendBytes)
                 .array()
             sendMessage(0, FrameType.BULK.value or EncryptionType.PLAIN.value, responsePayload)
@@ -277,7 +279,7 @@ class MessageHandler(
         sendProtoMessage(
             0,
             FrameType.BULK.value or EncryptionType.ENCRYPTED.value,
-            MessageType.PINGRESPONSE,
+            ControlMessageIdsEnum.ControlMessage.Enum.PING_RESPONSE.number.toShort(),
             response
         )
     }
@@ -293,7 +295,7 @@ class MessageHandler(
         sendProtoMessage(
             0,
             EncryptionType.ENCRYPTED.value or FrameType.BULK.value,
-            MessageType.SERVICEDISCOVERYREQUEST,
+            ControlMessageIdsEnum.ControlMessage.Enum.SERVICE_DISCOVERY_REQUEST.number.toShort(),
             request
         )
     }
