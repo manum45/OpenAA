@@ -14,9 +14,10 @@ import android.os.Build
 import android.util.Log
 import com.google.protobuf.GeneratedMessageLite
 import com.google.protobuf.Parser
-import tag.aas.PingRequestOuterClass.PingRequest
-import tag.aas.PingResponseOuterClass.PingResponse
-import tag.aas.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
+import f1x.aasdk.proto.messages.PingRequestMessage.PingRequest
+import f1x.aasdk.proto.messages.PingResponseMessage.PingResponse
+import f1x.aasdk.proto.messages.ServiceDiscoveryRequestMessage.ServiceDiscoveryRequest
+import f1x.aasdk.proto.messages.ServiceDiscoveryResponseMessage.ServiceDiscoveryResponse
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.ByteBuffer
@@ -30,9 +31,7 @@ import java.security.spec.PKCS8EncodedKeySpec
 import javax.net.ssl.*
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
-import tag.aas.MediaStreamTypeKt
-import tag.aas.MediaStreamTypeOuterClass
-import tag.aas.ServiceDiscoveryResponseOuterClass
+import f1x.aasdk.proto.enums.AVStreamTypeEnum.AVStreamType
 import java.security.Security
 import java.util.Dictionary
 import kotlin.experimental.or
@@ -97,6 +96,7 @@ class MessageHandler(
         /// TODO: pass message type also to this function, create buffer here
         /// Caution: will need to encrypt payload including message type it seems
         /// How to achieve this without having even more buffer copying
+        Log.d(TAG, "MessageHandler: sending message, channel: $channel, flags: $flags, payload: ${byteArrayToHex(payload, payload.size)}")
 
         val dataToSend = if ((flags and EncryptionType.ENCRYPTED.value).toInt() != 0) {
             /// From AaCommunicator::prepareMessage it looks like channel, flags and length is not encrypted,
@@ -286,8 +286,8 @@ class MessageHandler(
     private fun sendServiceDiscoveryRequest() {
         Log.d(TAG, "AAServer: sending service discovery request")
         val request = ServiceDiscoveryRequest.newBuilder()
-            .setManufacturer(Build.MANUFACTURER)
-            .setModel(Build.MODEL)
+            .setDeviceBrand(Build.MANUFACTURER)
+            .setDeviceName(Build.MODEL)
             .build()
 
         sendProtoMessage(
@@ -300,17 +300,17 @@ class MessageHandler(
 
     private fun handleServiceDiscoveryResponse(message: Message) {
         Log.d(TAG, "AAServer: handling service discovery response")
-        val response: ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse = parseProto(message.content, 2, ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse.parser())
+        val response: ServiceDiscoveryResponse = parseProto(message.content, 2, ServiceDiscoveryResponse.parser())
         Log.d(TAG, "AAServer: service discovery response: ${response.channelsCount} channels")
 
         for (channel in response.channelsList) {
             var handled = false
-            if (channel.hasMediaChannel()) {
-                when (channel.mediaChannel.mediaType) {
-                    MediaStreamTypeOuterClass.MediaStreamType.Enum.Video -> {
+            if (channel.hasAvChannel()) {
+                when (channel.avChannel.streamType) {
+                    AVStreamType.Enum.VIDEO -> {
                         Log.d(TAG, "AAServer: found video channel: id ${channel.channelId}")
                     }
-                    MediaStreamTypeOuterClass.MediaStreamType.Enum.Audio -> {
+                    AVStreamType.Enum.AUDIO -> {
                         Log.d(TAG, "AAServer: found audio channel: id ${channel.channelId}")
                         var handler = AudioChannelHandler(channel, this)
                         channelHandlers[channel.channelId] = handler
@@ -321,8 +321,8 @@ class MessageHandler(
                     }
                 }
             }
-            else if(channel.hasMediaInputChannel()) {
-                if (channel.mediaInputChannel.hasAudioConfig()) {
+            else if(channel.hasAvInputChannel()) {
+                if (channel.avInputChannel.hasAudioConfig()) {
                     Log.d(TAG, "AAServer: found audio input channel: id ${channel.channelId}")
                 } else {
                     Log.d(TAG, "AAServer: found unknown media input channel: id ${channel.channelId}")
@@ -335,12 +335,12 @@ class MessageHandler(
                 Log.d(TAG, "AAServer: found sensor channel: id ${channel.channelId}, sensors: $sensorsString")
             } else if (channel.hasInputChannel()) {
                 var buttonsStr: String = ""
-                for (button in channel.inputChannel.availableButtonsList) {
-                    buttonsStr += "${button.name}, "
+                for (button in channel.inputChannel.supportedKeycodesList) {
+                    buttonsStr += "${button}, "
                 }
                 var screenConfigStr: String = "None"
-                if(channel.inputChannel.hasScreenConfig()) {
-                    screenConfigStr = "width: ${channel.inputChannel.screenConfig.width}, height: ${channel.inputChannel.screenConfig.height}"
+                if(channel.inputChannel.hasTouchScreenConfig()) {
+                    screenConfigStr = "width: ${channel.inputChannel.touchScreenConfig.width}, height: ${channel.inputChannel.touchScreenConfig.height}"
                 }
                 Log.d(TAG, "AAServer: found input channel: id ${channel.channelId}, buttons: $buttonsStr, screen config: $screenConfigStr")
             } else {
