@@ -10,6 +10,7 @@ import f1x.aasdk.proto.enums.StatusEnum
 import f1x.aasdk.proto.ids.AVChannelMessageIdsEnum
 import f1x.aasdk.proto.ids.ControlMessageIdsEnum
 import f1x.aasdk.proto.messages.AVChannelSetupRequestMessage
+import f1x.aasdk.proto.messages.AVChannelSetupResponseMessage
 
 class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: MessageHandler): IChannelHandler {
 
@@ -30,15 +31,11 @@ class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: Messag
             ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_REQUEST.number.toShort(),
             request)
     }
-    override fun handleMessage(message: Message, messageType: ControlMessageIdsEnum.ControlMessage.Enum) {
-
-        Log.e(
-            TAG,
-            "AudioChannelHandler: handleMessage called for channel ${message.channel}, type: ${messageType.name}"
-        )
+    override fun handleMessage(message: Message, messageType: Short) {
 
         when (messageType) {
-            ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_RESPONSE -> {
+            ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_RESPONSE.number.toShort() -> {
+                Log.d(TAG, "Handling channel open response")
                 var response = messageHandler.parseProto(
                     message.content,
                     2,
@@ -50,7 +47,11 @@ class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: Messag
                     open = true
 
                     val request = AVChannelSetupRequestMessage.AVChannelSetupRequest.newBuilder()
-                        .setConfigIndex(0)
+                        // TODO: send a value that makes sense here. Issue with proto3: value of 0 will not be sent.
+                        /// OpenAuto apparently does not like this, not sure why though, as aasdk protos already have proto3
+                        /// see https://protobuf.dev/programming-guides/proto3/ -> implicit
+                        /// how to solve this? open auto seems to expect 0 values
+                        .setConfigIndex(1)
                         .build()
                     messageHandler.sendProtoMessage(
                         channelId,
@@ -63,8 +64,12 @@ class AudioChannelHandler(channel: ChannelDescriptor, var messageHandler: Messag
                     open = false
                 }
             }
+            AVChannelMessageIdsEnum.AVChannelMessage.Enum.SETUP_RESPONSE.number.toShort() -> {
+                Log.d(TAG, "Handling setup response")
+                Log.e(TAG, "Not implemented")
+            }
             else -> {
-                Log.e(TAG, "AudioChannelHandler: Unhandled message type: ${messageType.name}")
+                Log.e(TAG, "AudioChannelHandler: Unhandled message type: ${messageType.toHexString()}")
             }
         }
     }

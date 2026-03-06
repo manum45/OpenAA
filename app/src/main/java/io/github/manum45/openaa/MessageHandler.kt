@@ -175,24 +175,30 @@ class MessageHandler(
 
         /// Log.d(TAG, "Handling message content: " + byteArrayToHex(message.content, message.content.size))
         val msgTypeRaw = ByteBuffer.wrap(message.content, 0, 2).order(ByteOrder.BIG_ENDIAN).short
-        try {
-            messageType = ControlMessageIdsEnum.ControlMessage.Enum.forNumber(msgTypeRaw.toInt())
-        } catch (e: NoSuchElementException) {
-            Log.e(TAG, "Invalid message type: $msgTypeRaw")
-            return
-        }
 
-
-        Log.d(TAG, "MessageHandler: received message, type: ${messageType.name}, channel: ${message.channel}")
 
         if (message.channel != 0.toByte()){
             if(channelHandlers.contains(message.channel.toInt())) {
-                channelHandlers[message.channel.toInt()]?.handleMessage(message, messageType)
+                Log.d(TAG, "MessageHandler: received channel message for initialized channel handler: ${message.channel}, type: ${msgTypeRaw.toHexString()}")
+                channelHandlers[message.channel.toInt()]?.handleMessage(message, msgTypeRaw)
             } else {
                 Log.e(TAG,"MessageHandler: received channel message for non-initialized channel handler: ${message.channel}")
             }
         }
         else {
+            try {
+                messageType = ControlMessageIdsEnum.ControlMessage.Enum.forNumber(msgTypeRaw.toInt())
+            } catch (e: NoSuchElementException) {
+                Log.e(TAG, "Invalid message type: ${msgTypeRaw.toHexString()}")
+                return
+            }
+
+            if(messageType == null){
+                Log.e(TAG, "Invalid message type: ${msgTypeRaw.toHexString()}")
+                return
+            }
+            Log.d(TAG, "MessageHandler: received message, type: ${messageType.name}, channel: ${message.channel}")
+
             when (messageType) {
                 ControlMessageIdsEnum.ControlMessage.Enum.VERSION_REQUEST -> handleVersionRequest(message)
                 ControlMessageIdsEnum.ControlMessage.Enum.SSL_HANDSHAKE -> handleSslHandshake(message)
