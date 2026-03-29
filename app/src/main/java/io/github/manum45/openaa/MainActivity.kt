@@ -4,6 +4,7 @@ import android.R
 import android.content.Context
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -51,6 +52,8 @@ class MainActivity : ComponentActivity() {
     var usbHandler: AutoUsbHandler = AutoUsbHandler()
     var receiverRegisterd = false
 
+    var localMusicPlayer: LocalMusicPlayer? = null
+
     @OptIn(ExperimentalStdlibApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "Creating MainActivity")
@@ -62,12 +65,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // https://stackoverflow.com/a/59511458
-        val logCatViewModel by viewModels<LogcatViewModel>()
+        //// https://stackoverflow.com/a/59511458
+        //val logCatViewModel by viewModels<LogcatViewModel>()
 
-        logCatViewModel.logCatOutput().observe(this, Observer { logMessage ->
-            logCatText.value += "$logMessage\n"
-        })
+        //logCatViewModel.logCatOutput().observe(this, Observer { logMessage ->
+        //    logCatText.value += "$logMessage\n"
+        //})
 
         usbHandler.setup(getSystemService(Context.USB_SERVICE) as UsbManager)
         if(!receiverRegisterd) {
@@ -78,6 +81,10 @@ class MainActivity : ComponentActivity() {
             filter.addAction(usbHandler.ACTION_USB_ACCESSORY_HANDSHAKE)
             this.registerReceiver(usbHandler, filter)
         }
+
+        // just to test the file
+        // localMusicPlayer = LocalMusicPlayer(this.baseContext)
+        // localMusicPlayer?.PlayTestMusic()
     }
 
 
@@ -175,3 +182,5 @@ fun LogCatTextView()
     val content by logCatText
     Text(content, modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState(), reverseScrolling = true).horizontalScroll(rememberScrollState()))
 }
+
+

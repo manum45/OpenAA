@@ -32,6 +32,7 @@ import javax.net.ssl.*
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.io.pem.PemReader
 import f1x.aasdk.proto.enums.AVStreamTypeEnum.AVStreamType
+import f1x.aasdk.proto.enums.AudioTypeEnum
 import f1x.aasdk.proto.ids.ControlMessageIdsEnum
 import java.security.Security
 import java.util.Dictionary
@@ -84,10 +85,20 @@ class MessageHandler(
      * Sends a message to the head unit.
      */
     fun sendProtoMessage(channel: Int, flags: Byte, messageType: Short, message: GeneratedMessageLite<*, *>) {
-        val payload = ByteBuffer.allocate(2 + message.serializedSize)
+        sendProtoLikeMessage(
+            channel,
+            flags,
+            messageType,
+            message.toByteArray(),
+            message.serializedSize
+        )
+    }
+
+    fun sendProtoLikeMessage(channel: Int, flags: Byte, messageType: Short, payload: ByteArray, payloadLength: Int) {
+        val payload = ByteBuffer.allocate(2 + payloadLength)
             .order(ByteOrder.BIG_ENDIAN)
             .putShort(messageType)
-            .put(message.toByteArray())
+            .put(payload)
             .array()
 
         sendMessage(channel, flags, payload)
@@ -358,6 +369,27 @@ class MessageHandler(
             if(!handled) {
                 Log.w(TAG, "AAServer: channel was not handled: ${channel.channelId}")
             }
+        }
+    }
+
+
+    fun getReadyMediaAudioChannel() : AudioChannelHandler? {
+        for (channelHdnlr in channelHandlers.values) {
+            if (channelHdnlr is AudioChannelHandler) {
+                if (channelHdnlr.channel.avChannel.audioType == AudioTypeEnum.AudioType.Enum.MEDIA) {
+                    if (channelHdnlr.open && channelHdnlr.setup) {
+                        return channelHdnlr
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+
+    fun disconnected() {
+        for (channelHdnlr in channelHandlers.values) {
+            channelHdnlr.disconnected()
         }
     }
 }

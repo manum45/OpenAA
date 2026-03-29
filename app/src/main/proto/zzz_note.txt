@@ -1,3 +1,6 @@
 these files are taken directly from https://github.com/f1xpl/aasdk -> proto
 
 License: GPL-3.0
+
+
+some are switched back to proto2 because proto3 seems to discard fields set to 0 or uninitialized fields

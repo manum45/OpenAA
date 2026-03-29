@@ -28,6 +28,7 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
     private var messageHandler: MessageHandler = MessageHandler(usbStreamer, context);
 
+    private var audioStreamer : AudioStreamer = AudioStreamer(context, messageHandler)
 
 
 
@@ -41,6 +42,9 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
             usbStreamer.registerStreams(inputStream!!, outputStream!!)
             val thread = Thread(null, this, "AccessoryCommunicatorThread")
             thread.start()
+
+            val thread2 = Thread(null, audioStreamer, "AudioStreamerThread")
+            thread2.start()
         }
     }
 
@@ -68,6 +72,8 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
                 }
                 else if(bytesRead == -1)
                 {
+                    Log.d(TAG, "AccessoryCommunicator: read returned -1. Stopping communication")
+                    messageHandler.disconnected()
                     stopComm = true
                 }
             }
