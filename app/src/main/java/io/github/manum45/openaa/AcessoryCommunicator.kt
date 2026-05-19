@@ -30,6 +30,8 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
     private var audioStreamer : AudioStreamer = AudioStreamer(context, messageHandler)
 
+    private var videoStreamer : VideoStreamer = VideoStreamer(context, messageHandler)
+
 
 
     fun openAccessory() {
@@ -45,6 +47,9 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
             val thread2 = Thread(null, audioStreamer, "AudioStreamerThread")
             thread2.start()
+
+            val thread3 = Thread(null, videoStreamer, "VideoStreamerThread")
+            thread3.start()
         }
     }
 

@@ -328,6 +328,9 @@ class MessageHandler(
                 when (channel.avChannel.streamType) {
                     AVStreamType.Enum.VIDEO -> {
                         Log.d(TAG, "AAServer: found video channel: id ${channel.channelId}")
+                        val handler = VideoChannelHandler(channel, this)
+                        channelHandlers[channel.channelId] = handler
+                        handled = true
                     }
                     AVStreamType.Enum.AUDIO -> {
                         Log.d(TAG, "AAServer: found audio channel: id ${channel.channelId}")
@@ -370,6 +373,18 @@ class MessageHandler(
                 Log.w(TAG, "AAServer: channel was not handled: ${channel.channelId}")
             }
         }
+    }
+
+
+    fun getReadyVideoChannel(): VideoChannelHandler? {
+        for (channelHdnlr in channelHandlers.values) {
+            if (channelHdnlr is VideoChannelHandler) {
+                if (channelHdnlr.open && channelHdnlr.setup) {
+                    return channelHdnlr
+                }
+            }
+        }
+        return null
     }
 
 
