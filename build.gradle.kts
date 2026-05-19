@@ -12,7 +12,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:9.1.0") // Use your Android Gradle Plugin version
+        classpath("com.android.tools.build:gradle:9.2.1") // Use your Android Gradle Plugin version
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10") // Use your Kotlin version
         classpath("com.google.protobuf:protobuf-gradle-plugin:0.9.4") // Protobuf plugin
     }
