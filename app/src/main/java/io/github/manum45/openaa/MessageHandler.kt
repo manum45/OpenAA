@@ -72,6 +72,8 @@ class MessageHandler(
 
     private var channelHandlers: MutableMap<Int, IChannelHandler> = mutableMapOf()
 
+    private val sendLock = Any()
+
     init {
         sslHandler.initializeSslContext()
     }
@@ -104,7 +106,7 @@ class MessageHandler(
         sendMessage(channel, flags, payload)
     }
 
-    fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) {
+    fun sendMessage(channel: Int, flags: Byte, payload: ByteArray) = synchronized(sendLock) {
         /// TODO: pass message type also to this function, create buffer here
         /// Caution: will need to encrypt payload including message type it seems
         /// How to achieve this without having even more buffer copying

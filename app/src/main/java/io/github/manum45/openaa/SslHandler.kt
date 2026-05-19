@@ -37,10 +37,11 @@ import kotlin.text.clear
 class SslHandler (private val context: Context) {
 
     // Buffers for SSLEngine: appbuffers are unencrypted, netbuffers are encrypted
-    private val appSendBuffer: ByteBuffer = ByteBuffer.allocate(16384)
-    private val netSendBuffer: ByteBuffer = ByteBuffer.allocate(32768)
-    private val appReceiveBuffer: ByteBuffer = ByteBuffer.allocate(16384)
-    private val netReceiveBuffer: ByteBuffer = ByteBuffer.allocate(32768)
+    // Increased buffer sizes to handle larger payloads (e.g., video frames)
+    private val appSendBuffer: ByteBuffer = ByteBuffer.allocate(1024 * 1024)
+    private val netSendBuffer: ByteBuffer = ByteBuffer.allocate(1024 * 1024)
+    private val appReceiveBuffer: ByteBuffer = ByteBuffer.allocate(1024 * 1024)
+    private val netReceiveBuffer: ByteBuffer = ByteBuffer.allocate(1024 * 1024)
 
     private lateinit var sslEngine: SSLEngine
 
@@ -126,6 +127,7 @@ class SslHandler (private val context: Context) {
     }
 
     companion object {
+        private const val TAG = "SslHandler"
         init {
             // Required for loading PEM private key
             Security.addProvider(BouncyCastleProvider())
