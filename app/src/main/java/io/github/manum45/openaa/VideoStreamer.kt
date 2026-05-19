@@ -86,9 +86,15 @@ class VideoStreamer(private val context: Context, private val messageHandler: Me
                     buffer.get(data)
                     
                     // Convert length-prefixed NALUs to Annex-B if necessary
-                    // (MP4/MOV uses length-prefixed)
                     val annexBData = convertToAnnexB(data)
-                    channelHandler?.sendVideoData(annexBData)
+                    
+                    // Prepend AUD (00 00 00 01 09 f0) and send
+                    val audData = byteArrayOf(0, 0, 0, 1, 0x09.toByte(), 0xf0.toByte())
+                    val frameWithAud = ByteArray(audData.size + annexBData.size)
+                    System.arraycopy(audData, 0, frameWithAud, 0, audData.size)
+                    System.arraycopy(annexBData, 0, frameWithAud, audData.size, annexBData.size)
+
+                    channelHandler?.sendVideoData(frameWithAud, sampleTimeUs)
 
                     // Pacing
                     val expectedTimeUs = sampleTimeUs - firstSampleTimeUs
@@ -117,12 +123,12 @@ class VideoStreamer(private val context: Context, private val messageHandler: Me
         csd0?.let {
             val sps = ByteArray(it.remaining())
             it.get(sps)
-            channelHandler?.sendVideoData(ensureAnnexB(sps))
+            channelHandler?.sendVideoData(ensureAnnexB(sps), 0)
         }
         csd1?.let {
             val pps = ByteArray(it.remaining())
             it.get(pps)
-            channelHandler?.sendVideoData(ensureAnnexB(pps))
+            channelHandler?.sendVideoData(ensureAnnexB(pps), 0)
         }
     }
 

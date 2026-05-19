@@ -14,6 +14,8 @@ import f1x.aasdk.proto.messages.AVChannelStartIndicationMessage
 import f1x.aasdk.proto.messages.ChannelOpenRequestMessage.ChannelOpenRequest
 import f1x.aasdk.proto.messages.ChannelOpenResponseMessage.ChannelOpenResponse
 import f1x.aasdk.proto.messages.VideoFocusRequestMessage
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: MessageHandler): IChannelHandler {
 
@@ -90,7 +92,7 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
         }
     }
 
-    fun sendVideoData(data: ByteArray) {
+    fun sendVideoData(data: ByteArray, timestampUs: Long) {
         if (!open || !setup) {
             Log.e(TAG, "Cannot send video: Channel not ready (Open: $open, Setup: $setup)")
             return
@@ -115,7 +117,7 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
 
             val startRequest = AVChannelStartIndicationMessage.AVChannelStartIndication.newBuilder()
                 .setSession(0)
-                .setConfig(0)
+                .setConfig(1)
                 .build()
             messageHandler.sendProtoMessage(
                 channelId,
@@ -127,13 +129,46 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
             started = true
         }
 
-        messageHandler.sendProtoLikeMessage(
-            channelId,
-            FrameType.BULK.value or EncryptionType.ENCRYPTED.value,
-            AVChannelMessageIdsEnum.AVChannelMessage.Enum.AV_MEDIA_INDICATION.number.toShort(),
-            data,
-            data.size
-        )
+        // We fragment the video data into chunks small enough for the SslHandler to encrypt in a single wrap() call (max 16KB)
+        val maxChunkSize = 15000
+        var offset = 0
+        
+        while (offset < data.size) {
+            val isFirst = (offset == 0)
+            val remaining = data.size - offset
+            
+            if (isFirst) {
+                // First fragment uses AV_MEDIA_WITH_TIMESTAMP_INDICATION (ID 0)
+                val currentChunkSize = minOf(remaining, maxChunkSize - 8)
+                val timestampedData = ByteBuffer.allocate(8 + currentChunkSize)
+                    .order(ByteOrder.BIG_ENDIAN)
+                    .putLong(timestampUs)
+                    .put(data, offset, currentChunkSize)
+                    .array()
+
+                messageHandler.sendProtoLikeMessage(
+                    channelId,
+                    FrameType.BULK.value or EncryptionType.ENCRYPTED.value,
+                    AVChannelMessageIdsEnum.AVChannelMessage.Enum.AV_MEDIA_WITH_TIMESTAMP_INDICATION.number.toShort(),
+                    timestampedData,
+                    timestampedData.size
+                )
+                offset += currentChunkSize
+            } else {
+                // Subsequent fragments use AV_MEDIA_INDICATION (ID 1)
+                val currentChunkSize = minOf(remaining, maxChunkSize)
+                val chunk = data.copyOfRange(offset, offset + currentChunkSize)
+                
+                messageHandler.sendProtoLikeMessage(
+                    channelId,
+                    FrameType.BULK.value or EncryptionType.ENCRYPTED.value,
+                    AVChannelMessageIdsEnum.AVChannelMessage.Enum.AV_MEDIA_INDICATION.number.toShort(),
+                    chunk,
+                    currentChunkSize
+                )
+                offset += currentChunkSize
+            }
+        }
     }
 
     override fun disconnected() {
