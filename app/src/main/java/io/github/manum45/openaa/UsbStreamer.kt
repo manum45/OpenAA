@@ -7,13 +7,11 @@ import java.io.IOException
 
 
 fun byteArrayToHex(byteArray: ByteArray, numBytes: Int): String {
-    var msg :String = ""
-
-    for(i in 0..<numBytes)
-    {
-        msg += byteArray[i].toHexString() + " "
+    val sb = StringBuilder(numBytes * 3)
+    for (i in 0 until numBytes) {
+        sb.append(String.format("%02x ", byteArray[i]))
     }
-    return msg
+    return sb.toString()
 }
 
 
@@ -35,7 +33,7 @@ class UsbStreamer() : IUsbStreamer {
     }
 
     override fun write(data: ByteArray){
-        Log.d(TAG, "UsbStreamer write: " + byteArrayToHex(data, data.size))
+        // Log.d(TAG, "UsbStreamer write: " + byteArrayToHex(data, data.size))
         /// TODO: handle return value
         write(data, data.size)
     }
@@ -59,8 +57,8 @@ class UsbStreamer() : IUsbStreamer {
 
             if(bytesRead > 0)
             {
-                var msg = byteArrayToHex(inBuffer, bytesRead)
-                Log.d(TAG, "UsbStreamer read: $msg")
+                // var msg = byteArrayToHex(inBuffer, bytesRead)
+                // Log.d(TAG, "UsbStreamer read: $msg")
             }
 
             return bytesRead

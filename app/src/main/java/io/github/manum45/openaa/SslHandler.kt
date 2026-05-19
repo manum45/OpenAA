@@ -100,7 +100,9 @@ class SslHandler (private val context: Context) {
 
 
 
-    fun encryptPayload(payload: ByteArray): ByteArray? {
+    private val sslLock = Any()
+
+    fun encryptPayload(payload: ByteArray): ByteArray? = synchronized(sslLock) {
         val status = sslEngine.handshakeStatus
         if (status != SSLEngineResult.HandshakeStatus.FINISHED && status != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
             Log.e(TAG, "Cannot encrypt payload: Handshake is not complete. Status: $status")
@@ -130,7 +132,7 @@ class SslHandler (private val context: Context) {
         }
     }
 
-    fun decryptMessage(encryptedMsg: ByteArray): ByteArray? {
+    fun decryptMessage(encryptedMsg: ByteArray): ByteArray? = synchronized(sslLock) {
         /// TODO: should we clear() here instead of compact? Can there be partial messages here?
         netReceiveBuffer.compact()
         netReceiveBuffer.put(encryptedMsg)

@@ -39,26 +39,39 @@ class AudioStreamer(private val context: Context, private val messageHandler: Me
         Log.d("AudioStreamer", "Streaming raw file with resource ID: $resourceId")
         withContext(Dispatchers.IO) {
             val inputStream: InputStream = context.resources.openRawResource(resourceId)
-            val buffer = ByteArray(2048) // Small chunks to prevent jitter
+            val bufferSize = 8192 // Larger chunks for better efficiency
+            val buffer = ByteArray(bufferSize)
+            val bytesPerSecond = 192000.0 // 48kHz 16-bit stereo
+            /// note: streamed file is lower sample rate, but since the channel is openend as
+            /// 48kHz
+
+            var totalBytesSent = 0L
+            val startTimeNano = System.nanoTime()
 
             try {
                 var bytesRead = inputStream.read(buffer)
                 while (bytesRead != -1) {
 
-                    if(!channelHandler!!.open){
-                        Log.d(TAG, "AudioStreamer: Channel not open, stopping streaming")
+                    if(channelHandler?.open != true){
+                        Log.d("AudioStreamer", "AudioStreamer: Channel not open, stopping streaming")
                         break
                     }
 
-                    val chunk = buffer.copyOf(bytesRead)
-
+                    val chunk = if (bytesRead == bufferSize) buffer else buffer.copyOf(bytesRead)
                     channelHandler?.sendAudioData(chunk)
+                    totalBytesSent += bytesRead
 
-                    // Throttle the sending to match audio playback speed
-                    // (e.g., if sending 48kHz 16bit stereo, that's ~192KB/s)
-                    // For a 2048 byte buffer, wait ~10ms
-                    /// TODO: how to do real time streaming?
-                    //delay(1)
+                    // Calculate how much time should have passed for the bytes sent so far
+                    val expectedTimeNano = (totalBytesSent * 1_000_000_000L / bytesPerSecond.toLong())
+                    val actualTimeNano = System.nanoTime() - startTimeNano
+
+                    // Allow for a 10ms "lead" buffer to absorb system jitter
+                    val leadNano = 10_000_000L
+                    val sleepNano = expectedTimeNano - actualTimeNano - leadNano
+
+                    if (sleepNano > 0) {
+                        delay(sleepNano / 1_000_000)
+                    }
 
                     bytesRead = inputStream.read(buffer)
                 }
