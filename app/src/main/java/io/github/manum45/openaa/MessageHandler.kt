@@ -218,8 +218,11 @@ class MessageHandler(
                 ControlMessageIdsEnum.ControlMessage.Enum.PING_REQUEST -> handlePingRequest(message)
                 ControlMessageIdsEnum.ControlMessage.Enum.AUTH_COMPLETE -> sendServiceDiscoveryRequest()
                 ControlMessageIdsEnum.ControlMessage.Enum.SERVICE_DISCOVERY_RESPONSE -> handleServiceDiscoveryResponse(message)
+                ControlMessageIdsEnum.ControlMessage.Enum.AUDIO_FOCUS_RESPONSE -> {
+                    Log.d(TAG, "MessageHandler: received AUDIO_FOCUS_RESPONSE")
+                }
                 else -> {
-                    Log.e(TAG, "Unhandled message type: $messageType")
+                    Log.e(TAG, "Unhandled message type: $messageType (${msgTypeRaw.toString(16)})")
                     onMessageReceived?.invoke(message)
                 }
             }

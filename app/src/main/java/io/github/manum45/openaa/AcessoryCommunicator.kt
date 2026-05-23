@@ -33,10 +33,13 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
     private var systemAudioStreamer : SystemAudioStreamer = SystemAudioStreamer(context, messageHandler)
 
+    private var systemVideoStreamer : SystemVideoStreamer = SystemVideoStreamer(context, messageHandler)
+
     private var videoStreamer : VideoStreamer = VideoStreamer(context, messageHandler)
 
     fun setMediaProjection(projection: MediaProjection) {
         systemAudioStreamer.setMediaProjection(projection)
+        systemVideoStreamer.setMediaProjection(projection)
     }
 
 
@@ -57,8 +60,11 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
             val threadSystemAudio = Thread(null, systemAudioStreamer, "SystemAudioStreamerThread")
             threadSystemAudio.start()
 
-            val thread3 = Thread(null, videoStreamer, "VideoStreamerThread")
-            thread3.start()
+            val threadSystemVideo = Thread(null, systemVideoStreamer, "SystemVideoStreamerThread")
+            threadSystemVideo.start()
+
+            // val thread3 = Thread(null, videoStreamer, "VideoStreamerThread")
+            // thread3.start()
         }
     }
 

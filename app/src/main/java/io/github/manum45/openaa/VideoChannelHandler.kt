@@ -40,8 +40,9 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
 
     @OptIn(ExperimentalStdlibApi::class)
     override fun handleMessage(message: Message, messageType: Short) {
-        when (messageType) {
-            ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_RESPONSE.number.toShort() -> {
+        val typeInt = messageType.toInt() and 0xFFFF
+        when (typeInt) {
+            ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_RESPONSE.number -> {
                 Log.d(TAG, "VideoChannelHandler: Handling channel open response")
                 val response = messageHandler.parseProto(
                     message.content,
@@ -54,10 +55,6 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                     open = true
 
                     val request = AVChannelSetupRequestMessage.AVChannelSetupRequest.newBuilder()
-                        // TODO: send a value that makes sense here. Issue with proto3: value of 0 will not be sent.
-                        /// OpenAuto apparently does not like this, not sure why though, as aasdk protos already have proto3
-                        /// see https://protobuf.dev/programming-guides/proto3/ -> implicit
-                        /// how to solve this? open auto seems to expect 0 values
                         .setConfigIndex(1)
                         .build()
                     messageHandler.sendProtoMessage(
@@ -71,7 +68,7 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                     open = false
                 }
             }
-            AVChannelMessageIdsEnum.AVChannelMessage.Enum.SETUP_RESPONSE.number.toShort() -> {
+            AVChannelMessageIdsEnum.AVChannelMessage.Enum.SETUP_RESPONSE.number -> {
                 Log.d(TAG, "VideoChannelHandler: Handling setup response")
                 val response = messageHandler.parseProto(
                     message.content,
@@ -86,8 +83,17 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                     setup = false
                 }
             }
+            AVChannelMessageIdsEnum.AVChannelMessage.Enum.VIDEO_FOCUS_INDICATION.number -> {
+                Log.d(TAG, "VideoChannelHandler: Handling video focus indication (0x8008)")
+            }
+            AVChannelMessageIdsEnum.AVChannelMessage.Enum.AV_MEDIA_ACK_INDICATION.number -> {
+                // Ignore ACKs
+            }
+            32776 -> { // Literal 0x8008
+                Log.d(TAG, "VideoChannelHandler: Handling video focus indication via literal 0x8008")
+            }
             else -> {
-                Log.e(TAG, "VideoChannelHandler: Unhandled message type: ${messageType.toHexString()}")
+                Log.e(TAG, "VideoChannelHandler: Unhandled message type: ${typeInt.toString(16)}")
             }
         }
     }
