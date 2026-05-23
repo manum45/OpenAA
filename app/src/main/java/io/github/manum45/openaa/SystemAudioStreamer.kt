@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.media.projection.MediaProjection
@@ -123,10 +124,16 @@ class SystemAudioStreamer(
         }
 
         val buffer = ByteArray(bufferSize)
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         try {
             audioRecord.startRecording()
             Log.d("SystemAudioStreamer", "AudioRecord started recording")
+            
+            // Mute the phone speaker
+            Log.d("SystemAudioStreamer", "Muting phone speakers (STREAM_MUSIC)")
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+
             var totalBytesRead = 0L
             withContext(Dispatchers.IO) {
                 while (channelHandler?.open == true && mediaProjection != null) {
@@ -160,6 +167,14 @@ class SystemAudioStreamer(
         } catch (e: Exception) {
             Log.e("SystemAudioStreamer", "Error streaming system audio", e)
         } finally {
+            // Unmute the phone speaker
+            Log.d("SystemAudioStreamer", "Unmuting phone speakers")
+            try {
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+            } catch (e: Exception) {
+                Log.e("SystemAudioStreamer", "Error unmuting speakers", e)
+            }
+
             try {
                 if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                     audioRecord.stop()
