@@ -393,7 +393,9 @@ class MessageHandler(
     fun getReadyMediaAudioChannel() : AudioChannelHandler? {
         for (channelHdnlr in channelHandlers.values) {
             if (channelHdnlr is AudioChannelHandler) {
-                if (channelHdnlr.channel.avChannel.audioType == AudioTypeEnum.AudioType.Enum.MEDIA) {
+                val audioType = channelHdnlr.channel.avChannel.audioType
+                Log.d(TAG, "Checking audio channel ${channelHdnlr.channelId}, type: $audioType, open: ${channelHdnlr.open}, setup: ${channelHdnlr.setup}")
+                if (audioType == AudioTypeEnum.AudioType.Enum.MEDIA) {
                     if (channelHdnlr.open && channelHdnlr.setup) {
                         return channelHdnlr
                     }

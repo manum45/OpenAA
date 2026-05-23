@@ -3,6 +3,7 @@ package io.github.manum45.openaa
 import android.content.Context
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
+import android.media.projection.MediaProjection
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import kotlinx.coroutines.Runnable
@@ -30,8 +31,13 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
 
     private var audioStreamer : AudioStreamer = AudioStreamer(context, messageHandler)
 
+    private var systemAudioStreamer : SystemAudioStreamer = SystemAudioStreamer(context, messageHandler)
+
     private var videoStreamer : VideoStreamer = VideoStreamer(context, messageHandler)
 
+    fun setMediaProjection(projection: MediaProjection) {
+        systemAudioStreamer.setMediaProjection(projection)
+    }
 
 
     fun openAccessory() {
@@ -45,8 +51,11 @@ class AccessoryCommunicator(val accessory: UsbAccessory, val usbManager: UsbMana
             val thread = Thread(null, this, "AccessoryCommunicatorThread")
             thread.start()
 
-            val thread2 = Thread(null, audioStreamer, "AudioStreamerThread")
-            thread2.start()
+            // val thread2 = Thread(null, audioStreamer, "AudioStreamerThread")
+            // thread2.start()
+
+            val threadSystemAudio = Thread(null, systemAudioStreamer, "SystemAudioStreamerThread")
+            threadSystemAudio.start()
 
             val thread3 = Thread(null, videoStreamer, "VideoStreamerThread")
             thread3.start()

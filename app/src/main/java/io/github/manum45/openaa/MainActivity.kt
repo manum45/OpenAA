@@ -1,15 +1,22 @@
 package io.github.manum45.openaa
 
-import android.R
+import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
+import android.content.ServiceConnection
 import android.hardware.usb.UsbManager
 import android.media.MediaPlayer
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +56,59 @@ val logCatText = mutableStateOf("=== Logcat ===\n")
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var mediaProjectionManager: MediaProjectionManager
+    private var mediaProjection: MediaProjection? = null
+
+    private var mainService: MainService? = null
+    private var isBound = false
+    private var pendingProjectionData: Intent? = null
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(className: ComponentName, service: IBinder) {
+            val binder = service as MainService.LocalBinder
+            mainService = binder.getService()
+            isBound = true
+            Log.d(TAG, "MainService bound")
+            
+            pendingProjectionData?.let { data ->
+                completeMediaProjection(data)
+                pendingProjectionData = null
+            }
+        }
+
+        override fun onServiceDisconnected(arg0: ComponentName) {
+            isBound = false
+            mainService = null
+        }
+    }
+
+    private fun completeMediaProjection(data: Intent) {
+        mediaProjection = mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, data)
+        Log.d(TAG, "MediaProjection obtained after service bound")
+        usbHandler.setMediaProjection(mediaProjection!!)
+    }
+
+    private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val serviceIntent = Intent(this, MainService::class.java)
+            ContextCompat.startForegroundService(this, serviceIntent)
+            bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
+            
+            pendingProjectionData = result.data
+        } else {
+            Log.e(TAG, "MediaProjection permission denied")
+        }
+    }
+
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            Log.d(TAG, "RECORD_AUDIO permission granted")
+            projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+        } else {
+            Log.e(TAG, "RECORD_AUDIO permission denied")
+        }
+    }
+
     var usbHandler: AutoUsbHandler = AutoUsbHandler()
     var receiverRegisterd = false
 
@@ -73,6 +133,10 @@ class MainActivity : ComponentActivity() {
         //})
 
         usbHandler.setup(getSystemService(Context.USB_SERVICE) as UsbManager)
+
+        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+
         if(!receiverRegisterd) {
             Log.d(TAG, "Registering receiver")
             receiverRegisterd = true
@@ -89,7 +153,13 @@ class MainActivity : ComponentActivity() {
 
 
     override fun onDestroy() {
+        if (isBound) {
+            unbindService(connection)
+            isBound = false
+        }
         this.unregisterReceiver(usbHandler)
+        val serviceIntent = Intent(this, MainService::class.java)
+        stopService(serviceIntent)
         super.onDestroy()
     }
 }

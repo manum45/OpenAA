@@ -6,6 +6,7 @@ import android.content.Intent
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.media.projection.MediaProjection
 import android.os.Build.VERSION.SDK_INT
 import android.os.Bundle
 import android.os.Parcelable
@@ -41,6 +42,12 @@ class AutoUsbHandler : BroadcastReceiver() {
 
     private var communicator: AccessoryCommunicator? = null
 
+    private var mediaProjection: MediaProjection? = null
+
+    fun setMediaProjection(projection: MediaProjection) {
+        mediaProjection = projection
+        communicator?.setMediaProjection(projection)
+    }
 
     fun logAccessory(accessory: UsbAccessory) {
         Log.d(TAG,
@@ -114,6 +121,7 @@ class AutoUsbHandler : BroadcastReceiver() {
                     }
                     else {
                         communicator = AccessoryCommunicator(device_acc, usbManager!!, context)
+                        mediaProjection?.let { communicator?.setMediaProjection(it) }
                         communicator!!.openAccessory()
                     }
                 }

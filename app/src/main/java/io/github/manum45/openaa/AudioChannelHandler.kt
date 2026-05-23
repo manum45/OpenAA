@@ -49,14 +49,17 @@ class AudioChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                 )
 
                 if(response.status == StatusEnum.Status.Enum.OK){
-                    Log.d(TAG, "AudioChannelHandler: Channel opened successfully")
+                    Log.d(TAG, "AudioChannelHandler: Channel opened successfully for channel $channelId")
+                    Log.d(TAG, "Audio Type: ${channel.avChannel.audioType}")
                     open = true
 
+                    Log.d(TAG, "Available Audio Configs: ${audioConfigs.size}")
+                    audioConfigs.forEachIndexed { index, config ->
+                        Log.d(TAG, "Config $index: SampleRate=${config.sampleRate}, Channels=${config.channelCount}, Bits=${config.bitDepth}")
+                    }
+
+                    Log.d(TAG, "AudioChannelHandler: Sending setup request with config index 1")
                     val request = AVChannelSetupRequestMessage.AVChannelSetupRequest.newBuilder()
-                        // TODO: send a value that makes sense here. Issue with proto3: value of 0 will not be sent.
-                        /// OpenAuto apparently does not like this, not sure why though, as aasdk protos already have proto3
-                        /// see https://protobuf.dev/programming-guides/proto3/ -> implicit
-                        /// how to solve this? open auto seems to expect 0 values
                         .setConfigIndex(1)
                         .build()
                     messageHandler.sendProtoMessage(
@@ -87,6 +90,10 @@ class AudioChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                     Log.e(TAG, "AudioChannelHandler: Setup failed with status ${response.mediaStatus}")
                     setup = false
                 }
+            }
+            AVChannelMessageIdsEnum.AVChannelMessage.Enum.AV_MEDIA_ACK_INDICATION.number.toShort() -> {
+                // Head unit acknowledged receiving media. We can use this for flow control if needed.
+                // Log.v(TAG, "Audio data ACK received")
             }
             else -> {
                 Log.e(TAG, "AudioChannelHandler: Unhandled message type: ${messageType.toHexString()}")
