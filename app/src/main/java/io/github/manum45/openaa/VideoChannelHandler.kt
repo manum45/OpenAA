@@ -26,6 +26,12 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
 
     init {
         Log.d(TAG, "VideoChannelHandler: Initializing for channel ${channel.channelId}")
+        
+        // Log car's video capabilities
+        channel.avChannel.videoConfigsList.forEachIndexed { index, config ->
+            Log.d(TAG, "Video Config $index: ${config.videoResolution} @ ${config.videoFps} fps")
+        }
+
         val request = ChannelOpenRequest.newBuilder()
             .setChannelId(channel.channelId)
             .setPriority(1)
@@ -41,6 +47,8 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
     @OptIn(ExperimentalStdlibApi::class)
     override fun handleMessage(message: Message, messageType: Short) {
         val typeInt = messageType.toInt() and 0xFFFF
+        Log.d(TAG, "VideoChannelHandler: Received message type: ${typeInt.toString(16)}")
+        
         when (typeInt) {
             ControlMessageIdsEnum.ControlMessage.Enum.CHANNEL_OPEN_RESPONSE.number -> {
                 Log.d(TAG, "VideoChannelHandler: Handling channel open response")
@@ -89,23 +97,21 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
             AVChannelMessageIdsEnum.AVChannelMessage.Enum.AV_MEDIA_ACK_INDICATION.number -> {
                 // Ignore ACKs
             }
-            32776 -> { // Literal 0x8008
-                Log.d(TAG, "VideoChannelHandler: Handling video focus indication via literal 0x8008")
-            }
             else -> {
-                Log.e(TAG, "VideoChannelHandler: Unhandled message type: ${typeInt.toString(16)}")
+                if (typeInt != 32772) { // Literal 0x8004 ACK
+                    Log.e(TAG, "VideoChannelHandler: Unhandled message type: ${typeInt.toString(16)}")
+                }
             }
         }
     }
 
     fun sendVideoData(data: ByteArray, timestampUs: Long) {
         if (!open || !setup) {
-            Log.e(TAG, "Cannot send video: Channel not ready (Open: $open, Setup: $setup)")
             return
         }
 
         if (!started) {
-            Log.d(TAG, "Requesting Video Focus")
+            Log.d(TAG, "Requesting Video Focus & Starting Channel")
 
             val focusRequest = VideoFocusRequestMessage.VideoFocusRequest.newBuilder()
                 .setFocusMode(VideoFocusModeEnum.VideoFocusMode.Enum.FOCUSED)
@@ -118,8 +124,6 @@ class VideoChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                 AVChannelMessageIdsEnum.AVChannelMessage.Enum.VIDEO_FOCUS_REQUEST.number.toShort(),
                 focusRequest
             )
-
-            Log.d(TAG, "VideoChannelHandler: Starting channel")
 
             val startRequest = AVChannelStartIndicationMessage.AVChannelStartIndication.newBuilder()
                 .setSession(0)

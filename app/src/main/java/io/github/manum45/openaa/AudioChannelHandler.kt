@@ -58,7 +58,6 @@ class AudioChannelHandler(var channel: ChannelDescriptor, var messageHandler: Me
                         Log.d(TAG, "Config $index: SampleRate=${config.sampleRate}, Channels=${config.channelCount}, Bits=${config.bitDepth}")
                     }
 
-                    Log.d(TAG, "AudioChannelHandler: Sending setup request with config index 1")
                     val request = AVChannelSetupRequestMessage.AVChannelSetupRequest.newBuilder()
                         .setConfigIndex(1)
                         .build()
