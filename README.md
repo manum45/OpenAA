@@ -27,7 +27,7 @@ Determine whether it is feasible to implement a (FOSS) replacement for the Andro
   - experimental implementation: `app/src/main/java/io/github/manum45/openaa/UsbHandler.kt:BroadcastReceiver`
 - Streaming arbitrary video and audio to the headunit is feasible.
 - Phone screen can be mirrored to the headunit, system audio as a whole can be output on the headunit.
-- **Blocker**: can't open apps on a virtual display.
+- **Blocker**: can't open apps on a virtual display. This means the app can't launch and stream the android auto optimized activities of other apps.
 
   My understanding of this issue, but it's difficult for me to find comprehensive docu on this:
   - non-system apps can only create "untrusted" virtual displays
