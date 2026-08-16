@@ -14,12 +14,18 @@ import android.util.Log
 import android.view.Surface
 import android.view.WindowManager
 import android.app.Presentation
+import android.app.ActivityManager
+import android.app.PendingIntent
 import android.os.Bundle
 import android.widget.TextView
 import android.view.Gravity
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.app.ActivityOptions
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -163,6 +169,12 @@ class SystemVideoStreamer(
                         }
                     }
                     presentation?.show()
+                    
+                    // Delay slightly to let the display stabilize, then launch app
+                    val mainHandler = Handler(Looper.getMainLooper())
+                    mainHandler.postDelayed({
+                        launchActivityOnDisplay(display.displayId)
+                    }, 2000)
                 }
             }
 
@@ -252,6 +264,128 @@ class SystemVideoStreamer(
             inputSurface = null
         } catch (e: Exception) {
             Log.e("SystemVideoStreamer", "Error stopping capture", e)
+        }
+    }
+
+    private fun logInstalledPackagesAndIntents() {
+        // Query and log all installed apps and their activities
+        val pm = context.packageManager
+        val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_ACTIVITIES.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledPackages(PackageManager.GET_ACTIVITIES)
+        }
+
+        Log.d("SystemVideoStreamer", "--- Start of Package/Activity Log ---")
+        for (pkg in packages) {
+            // Log.d("SystemVideoStreamer", "Package: ${pkg.packageName}")
+            pkg.activities?.forEach { activity ->
+                /// TODO: i think activity.flags is the wrong source for these flags. how to get activityinfo?
+                throw Exception()
+                if((activity.flags and ActivityInfo.FLAG_ALLOW_UNTRUSTED_ACTIVITY_EMBEDDING) != 0)
+                {
+                    Log.d("SystemVideoStreamer", " ${pkg.packageName},  Activity: ${activity.name} allows untrusted embedding")
+                }
+                // https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/content/pm/ActivityInfo.java#725
+                // FLAG_ALLOW_EMBEDDED
+                if((activity.flags and 0x80000000.toInt()) != 0)
+                {
+                    Log.d("SystemVideoStreamer", " ${pkg.packageName},  Activity: ${activity.name} allows embedding")
+                }
+            }
+        }
+        Log.d("SystemVideoStreamer", "--- End of Package/Activity Log ---")
+    }
+
+    private fun launchActivityOnDisplay(displayId: Int) {
+        Log.d("SystemVideoStreamer", "Attempting to launch app on Display $displayId")
+
+        logInstalledPackagesAndIntents()
+
+        try {
+            val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val targetDisplay = displayManager.getDisplay(displayId)
+            if (targetDisplay == null) {
+                Log.e("SystemVideoStreamer", "Display $displayId not found")
+                return
+            }
+
+            val displayContext = context.createDisplayContext(targetDisplay)
+
+            val options = ActivityOptions.makeBasic()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                options.setLaunchDisplayId(displayId)
+            }
+
+            var pakName = "app.comaps.fdroid"
+            var intentName = "androidx.car.app.CarAppService"
+
+            try {
+                var pak = context.packageManager.getPackageInfo(pakName, 0)
+                if(pak == null) {
+                    Log.w("SystemVideoStreamer", "Package $pakName not found")
+                    //return
+                }
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w("SystemVideoStreamer", "Package $pakName not found")
+            }
+
+
+
+            // Try to launch Organic Maps (using app.comaps.fdroid as the package name)
+            var intent = context.packageManager.getLaunchIntentForPackage(pakName)
+
+            if (intent == null) {
+                Log.i("SystemVideoStreamer", "No launch intent found for package $pakName")
+                // Specific splash activity if main launch intent fails
+                intent = Intent().setClassName(pakName, intentName)
+                // Verify it exists
+                if (context.packageManager.resolveActivity(intent, 0) == null) {
+                    Log.w("SystemVideoStreamer", "Intent $intentName of package $pakName not found")
+                    return
+                }
+            }
+
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                if (!am.isActivityStartAllowedOnDisplay(context, displayId, intent)) {
+                    Log.w("SystemVideoStreamer", "Activity start might be denied on Display $displayId. " +
+                            "Ensure 'Force desktop mode' is enabled in Developer Options if this fails.")
+                }
+            }
+
+            displayContext.startActivity(intent, options.toBundle())
+            Log.d("SystemVideoStreamer", "App launch intent sent to Display $displayId")
+        } catch (e: SecurityException) {
+            Log.e("SystemVideoStreamer", "SecurityException: Display $displayId might not be trusted.", e)
+            Log.i("SystemVideoStreamer", "Trying fallback with PendingIntent and more flags...")
+            try {
+                val launchIntent = context.packageManager.getLaunchIntentForPackage("app.comaps.fdroid")
+                    ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage("app.comaps.fdroid")
+                
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+
+                val options = ActivityOptions.makeBasic()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    options.setLaunchDisplayId(displayId)
+                }
+                
+                // For Android 14+ background activity starts
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                }
+
+                val pi = PendingIntent.getActivity(context, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                pi.send(context, 0, null, null, null, null, options.toBundle())
+                Log.d("SystemVideoStreamer", "Fallback launch triggered")
+            } catch (e2: Exception) {
+                Log.e("SystemVideoStreamer", "Fallback also failed: ${e2.message}")
+            }
+        } catch (e: Exception) {
+            Log.e("SystemVideoStreamer", "Failed to launch app on virtual display", e)
         }
     }
 }
